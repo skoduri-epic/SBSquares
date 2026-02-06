@@ -4,11 +4,11 @@ import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GameProvider, useGameContext } from "~/components/GameProvider";
 import { supabase } from "~/lib/supabase";
-import { generateDraftOrder, generateDigitPermutation, calculateQuarterResult, pickRandomSquares, getPlayerInitials } from "~/lib/game-logic";
+import { generateDraftOrder, generateDigitPermutation, calculateQuarterResult, pickRandomSquares, getPlayerInitials, calculatePrizes } from "~/lib/game-logic";
 import type { Quarter } from "~/lib/types";
 import { PLAYER_COLORS } from "~/lib/types";
 import { cn } from "~/lib/utils";
-import { ArrowLeft, Play, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X, Users, Copy, Check, QrCode, Link2, Share2 } from "lucide-react";
+import { ArrowLeft, Play, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X, Users, Copy, Check, Link2, Share2, Lock, DollarSign } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { setSession } from "~/hooks/use-game";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/ui/tooltip";
@@ -63,6 +63,11 @@ function AdminView({ gameId }: { gameId: string }) {
   const [bulkResult, setBulkResult] = useState<{ name: string; pin: string; color: string }[] | null>(null);
   const [bulkCopied, setBulkCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [editingConfig, setEditingConfig] = useState<string | null>(null);
+  const [configError, setConfigError] = useState("");
+  const [priceInput, setPriceInput] = useState("");
+  const [winnerPctInput, setWinnerPctInput] = useState("");
+  const [splitInputs, setSplitInputs] = useState({ q1: "", q2: "", q3: "", q4: "" });
 
   if (!game || !session?.isAdmin) {
     return (
@@ -390,6 +395,91 @@ function AdminView({ gameId }: { gameId: string }) {
     } finally {
       setLoading("");
     }
+  }
+
+  async function saveMaxPlayers(value: number) {
+    setLoading("max-players");
+    setConfigError("");
+    try {
+      const { error } = await supabase
+        .from("games")
+        .update({ max_players: value })
+        .eq("id", game!.id);
+      if (error) { setConfigError(error.message); return; }
+      reload();
+    } catch { setConfigError("Failed to save"); }
+    finally { setLoading(""); }
+  }
+
+  async function savePricePerSquare() {
+    const val = parseFloat(priceInput);
+    if (isNaN(val) || val < 0) { setConfigError("Enter a valid price"); return; }
+    setLoading("price");
+    setConfigError("");
+    try {
+      const { error } = await supabase
+        .from("games")
+        .update({
+          price_per_square: val,
+          pool_amount: val * 100,
+          prize_per_quarter: (val * 100) / 4,
+        })
+        .eq("id", game!.id);
+      if (error) { setConfigError(error.message); return; }
+      setEditingConfig(null);
+      reload();
+    } catch { setConfigError("Failed to save"); }
+    finally { setLoading(""); }
+  }
+
+  async function savePrizeSplit() {
+    const vals = {
+      q1: parseInt(splitInputs.q1),
+      q2: parseInt(splitInputs.q2),
+      q3: parseInt(splitInputs.q3),
+      q4: parseInt(splitInputs.q4),
+    };
+    if (Object.values(vals).some((v) => isNaN(v) || v < 0)) {
+      setConfigError("All quarters must have a valid percentage");
+      return;
+    }
+    const sum = vals.q1 + vals.q2 + vals.q3 + vals.q4;
+    if (sum !== 100) {
+      setConfigError(`Percentages must sum to 100% (currently ${sum}%)`);
+      return;
+    }
+    setLoading("split");
+    setConfigError("");
+    try {
+      const { error } = await supabase
+        .from("games")
+        .update({ prize_split: vals })
+        .eq("id", game!.id);
+      if (error) { setConfigError(error.message); return; }
+      setEditingConfig(null);
+      reload();
+    } catch { setConfigError("Failed to save"); }
+    finally { setLoading(""); }
+  }
+
+  async function saveWinnerPct() {
+    const val = parseInt(winnerPctInput);
+    if (isNaN(val) || val < 0 || val > 100) {
+      setConfigError("Enter a value between 0 and 100");
+      return;
+    }
+    setLoading("winner-pct");
+    setConfigError("");
+    try {
+      const { error } = await supabase
+        .from("games")
+        .update({ winner_pct: val })
+        .eq("id", game!.id);
+      if (error) { setConfigError(error.message); return; }
+      setEditingConfig(null);
+      reload();
+    } catch { setConfigError("Failed to save"); }
+    finally { setLoading(""); }
   }
 
   async function toggleAdmin(playerId: string, currentIsAdmin: boolean) {
@@ -740,6 +830,238 @@ function AdminView({ gameId }: { gameId: string }) {
                 </button>
               )}
             </div>
+          )}
+
+          {/* Divider */}
+          <div className="border-t border-border my-1" />
+
+          {/* Max Players */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground w-20">Players</span>
+            {game.status === "setup" && players.length <= 1 ? (
+              <select
+                value={game.max_players}
+                onChange={(e) => saveMaxPlayers(parseInt(e.target.value))}
+                disabled={loading === "max-players"}
+                className="bg-input border border-border rounded px-2 py-1 text-sm"
+              >
+                {[5, 10, 20, 25].map((n) => (
+                  <option key={n} value={n}>{n} players</option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-sm flex items-center gap-1">
+                {game.max_players} players
+                <Lock className="w-3 h-3 text-muted-foreground" />
+              </span>
+            )}
+          </div>
+
+          {/* Price Per Square */}
+          {editingConfig === "price" ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground w-20">$/Square</span>
+                <div className="flex items-center gap-1 flex-1">
+                  <DollarSign className="w-3.5 h-3.5 text-muted-foreground" />
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={priceInput}
+                    onChange={(e) => setPriceInput(e.target.value)}
+                    className="flex-1 bg-input border border-border rounded px-2 py-1 text-sm tabular-nums"
+                    autoFocus
+                  />
+                </div>
+                <button
+                  onClick={savePricePerSquare}
+                  disabled={loading === "price"}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground rounded px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {loading === "price" ? "..." : "Save"}
+                </button>
+                <button
+                  onClick={() => { setEditingConfig(null); setConfigError(""); }}
+                  className="text-muted-foreground hover:text-foreground rounded px-2 py-1.5 text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+              {priceInput && !isNaN(parseFloat(priceInput)) && (
+                <p className="text-[11px] text-muted-foreground pl-20">
+                  Total Pot: ${(parseFloat(priceInput) * 100).toFixed(0)} | Per Quarter: ${(parseFloat(priceInput) * 25).toFixed(0)}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground w-20">$/Square</span>
+              <span className="text-sm tabular-nums">${Number(game.price_per_square).toFixed(2)}</span>
+              <span className="text-[10px] text-muted-foreground">
+                (Pot: ${(game.price_per_square * 100).toFixed(0)})
+              </span>
+              {game.status === "setup" && (
+                <button
+                  onClick={() => { setPriceInput(String(game.price_per_square)); setEditingConfig("price"); setConfigError(""); }}
+                  className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                  title="Edit price per square"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Winner / Runner-up Split */}
+          {editingConfig === "winner-pct" ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground w-20">Win/RU</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={winnerPctInput}
+                  onChange={(e) => setWinnerPctInput(e.target.value)}
+                  className="w-16 bg-input border border-border rounded px-2 py-1 text-sm tabular-nums text-center"
+                  autoFocus
+                />
+                <span className="text-xs text-muted-foreground">% winner</span>
+                <button
+                  onClick={saveWinnerPct}
+                  disabled={loading === "winner-pct"}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground rounded px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {loading === "winner-pct" ? "..." : "Save"}
+                </button>
+                <button
+                  onClick={() => { setEditingConfig(null); setConfigError(""); }}
+                  className="text-muted-foreground hover:text-foreground rounded px-2 py-1.5 text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+              {winnerPctInput && !isNaN(parseInt(winnerPctInput)) && (
+                <p className="text-[11px] text-muted-foreground pl-20">
+                  Winner: {winnerPctInput}% | Runner-up: {100 - parseInt(winnerPctInput)}%
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground w-20">Win/RU</span>
+              <span className="text-sm tabular-nums">{game.winner_pct}% / {100 - game.winner_pct}%</span>
+              {game.status === "setup" && (
+                <button
+                  onClick={() => { setWinnerPctInput(String(game.winner_pct)); setEditingConfig("winner-pct"); setConfigError(""); }}
+                  className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                  title="Edit winner/runner-up split"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Prize Split (Q1-Q4) */}
+          {editingConfig === "split" ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground w-20">Split</span>
+                <div className="flex items-center gap-1 flex-1">
+                  {(["q1", "q2", "q3", "q4"] as const).map((q) => (
+                    <div key={q} className="flex-1">
+                      <label className="block text-[9px] text-muted-foreground text-center uppercase">{q}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={splitInputs[q]}
+                        onChange={(e) => setSplitInputs((s) => ({ ...s, [q]: e.target.value }))}
+                        className="w-full bg-input border border-border rounded px-1 py-1 text-xs tabular-nums text-center"
+                      />
+                    </div>
+                  ))}
+                  <span className="text-xs text-muted-foreground ml-1">%</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 pl-20">
+                <button
+                  onClick={savePrizeSplit}
+                  disabled={loading === "split"}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground rounded px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {loading === "split" ? "..." : "Save"}
+                </button>
+                <button
+                  onClick={() => { setEditingConfig(null); setConfigError(""); }}
+                  className="text-muted-foreground hover:text-foreground rounded px-2 py-1.5 text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground w-20">Split</span>
+              <span className="text-xs tabular-nums">
+                {["q1", "q2", "q3", "q4"].map((q, i) => (
+                  <span key={q}>
+                    {i > 0 && " / "}{game.prize_split[q] ?? 25}%
+                  </span>
+                ))}
+              </span>
+              {game.status === "setup" && (
+                <button
+                  onClick={() => {
+                    setSplitInputs({
+                      q1: String(game.prize_split.q1 ?? 25),
+                      q2: String(game.prize_split.q2 ?? 25),
+                      q3: String(game.prize_split.q3 ?? 25),
+                      q4: String(game.prize_split.q4 ?? 25),
+                    });
+                    setEditingConfig("split");
+                    setConfigError("");
+                  }}
+                  className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                  title="Edit quarter prize split"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Prize Summary */}
+          {(() => {
+            const prizes = calculatePrizes(game);
+            return (
+              <div className="bg-secondary/30 rounded-lg px-3 py-2 space-y-1">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Prize Summary</p>
+                <p className="text-xs tabular-nums">
+                  Total Pot: <span className="text-foreground font-medium">${prizes.totalPot.toFixed(0)}</span>
+                </p>
+                <div className="grid grid-cols-4 gap-1">
+                  {prizes.quarters.map((q) => (
+                    <div key={q.quarter} className="text-center">
+                      <p className="text-[9px] text-muted-foreground uppercase">{q.quarter}</p>
+                      <p className="text-[10px] tabular-nums text-foreground">${q.quarterPot}</p>
+                      <p className="text-[9px] tabular-nums text-winner">W ${q.winnerPrize}</p>
+                      <p className="text-[9px] tabular-nums text-runner-up">R ${q.runnerUpPrize}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[9px] text-muted-foreground">
+                  Same digit: winner gets 100% of quarter pot
+                </p>
+              </div>
+            );
+          })()}
+
+          {/* Config error */}
+          {configError && (
+            <p className="text-[11px] text-destructive">{configError}</p>
           )}
         </section>
 
