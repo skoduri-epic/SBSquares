@@ -47,7 +47,7 @@ export function PickControls({ onPickingStateChange }: PickControlsProps) {
     return (
       <div className="mt-3">
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 text-center">
-          {batchLabel} Draft Order
+          {isSingleBatch ? "Draft Order" : `${batchLabel} Draft Order`}
         </p>
         <TooltipProvider>
           <div className="flex flex-wrap gap-2 justify-center">
