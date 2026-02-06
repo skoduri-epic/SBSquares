@@ -15,7 +15,6 @@ interface PickControlsProps {
 export function PickControls({ onPickingStateChange }: PickControlsProps) {
   const { game, session, draftOrder, squares, currentPlayer, players, reload } = useGameContext();
   const [mode, setMode] = useState<"choose" | "manual" | null>(null);
-  const [picksUsed, setPicksUsed] = useState(0);
   const [loading, setLoading] = useState(false);
 
   if (!game || !session || !currentPlayer) return null;
@@ -34,6 +33,11 @@ export function PickControls({ onPickingStateChange }: PickControlsProps) {
   const currentPicker = batchOrder.find((d) => d.picks_remaining > 0);
   const isMyTurn = currentPicker?.player_id === session.playerId;
   const picksRemaining = myDraft?.picks_remaining ?? 0;
+
+  // Derive picks used from actual squares data (count player's squares in current batch)
+  const picksUsed = squares.flat().filter(
+    (sq) => sq?.player_id === session.playerId && sq?.batch === batch
+  ).length;
 
   // Draft progress - compact horizontal icon row
   function DraftProgress() {
@@ -113,8 +117,7 @@ export function PickControls({ onPickingStateChange }: PickControlsProps) {
   async function handleRandomPick() {
     setLoading(true);
     try {
-      const available = picksRemaining - picksUsed;
-      const picks = pickRandomSquares(squares, available);
+      const picks = pickRandomSquares(squares, picksRemaining);
 
       for (const pick of picks) {
         await supabase
@@ -137,7 +140,6 @@ export function PickControls({ onPickingStateChange }: PickControlsProps) {
         .eq("batch", batch)
         .eq("player_id", session!.playerId);
 
-      setPicksUsed(picksRemaining);
       setMode(null);
       onPickingStateChange?.(false);
       reload();
@@ -191,12 +193,11 @@ export function PickControls({ onPickingStateChange }: PickControlsProps) {
         <p className="text-sm">
           Tap squares to pick:{" "}
           <span className="font-bold text-accent">{picksUsed}</span> of{" "}
-          <span className="font-bold">{picksRemaining}</span>
+          <span className="font-bold">{picksUsed + picksRemaining}</span>
         </p>
         <button
           onClick={() => {
             setMode(null);
-            setPicksUsed(0);
             onPickingStateChange?.(false);
           }}
           className="text-xs text-muted-foreground hover:text-foreground"
@@ -207,7 +208,7 @@ export function PickControls({ onPickingStateChange }: PickControlsProps) {
       <div className="w-full bg-muted rounded-full h-2 mt-2">
         <div
           className="bg-accent h-2 rounded-full transition-all"
-          style={{ width: `${(picksUsed / picksRemaining) * 100}%` }}
+          style={{ width: `${Math.min(((picksUsed / (picksUsed + picksRemaining)) || 0) * 100, 100)}%` }}
         />
       </div>
     </div>

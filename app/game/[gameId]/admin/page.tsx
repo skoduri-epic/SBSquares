@@ -681,7 +681,7 @@ function AdminView({ gameId }: { gameId: string }) {
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground w-20">Team Row</span>
               <span className="text-sm">{game.team_row}</span>
-              {game.status === "setup" && (
+              {["setup", "batch1", "batch2"].includes(game.status) && (
                 <button
                   onClick={() => startEditingTeam("row")}
                   className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
@@ -728,7 +728,7 @@ function AdminView({ gameId }: { gameId: string }) {
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground w-20">Team Col</span>
               <span className="text-sm">{game.team_col}</span>
-              {game.status === "setup" && (
+              {["setup", "batch1", "batch2"].includes(game.status) && (
                 <button
                   onClick={() => startEditingTeam("col")}
                   className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
