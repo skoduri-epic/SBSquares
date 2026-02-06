@@ -11,6 +11,11 @@ export interface Game {
   game_code: string;
   pool_amount: number;
   prize_per_quarter: number;
+  max_players: number;
+  price_per_square: number;
+  prize_split: Record<string, number>;
+  winner_pct: number;
+  invite_enabled: boolean;
   created_at: string;
 }
 
@@ -81,8 +86,13 @@ export interface GridData {
   players: Map<string, Player>;
 }
 
-// Player color map
+// Player color map (25 visually distinct colors, well-spaced HSL hues)
 export const PLAYER_COLORS = [
+  // Original 10 (positions 0-9)
   "#3B82F6", "#EF4444", "#22C55E", "#F59E0B", "#A855F7",
   "#EC4899", "#06B6D4", "#F97316", "#6366F1", "#14B8A6",
+  // Extended 15 (positions 10-24)
+  "#DC2626", "#2563EB", "#16A34A", "#CA8A04", "#9333EA",
+  "#DB2777", "#0891B2", "#EA580C", "#4F46E5", "#0D9488",
+  "#E11D48", "#7C3AED", "#059669", "#D97706", "#0284C7",
 ] as const;

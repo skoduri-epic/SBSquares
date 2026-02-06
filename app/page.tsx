@@ -26,6 +26,8 @@ export default function LandingPage() {
     teamCol: "",
     playerName: "",
     playerPin: "",
+    maxPlayers: 10,
+    pricePerSquare: 5,
   });
 
   // Check for existing session
@@ -141,6 +143,8 @@ export default function LandingPage() {
 
     setLoading(true);
     try {
+      const poolAmount = createForm.pricePerSquare * 100;
+
       const { data: newGame, error: gameErr } = await supabase
         .from("games")
         .insert({
@@ -149,8 +153,13 @@ export default function LandingPage() {
           team_row: teamRow,
           team_col: teamCol,
           status: "setup",
-          pool_amount: 500,
-          prize_per_quarter: 125,
+          max_players: createForm.maxPlayers,
+          price_per_square: createForm.pricePerSquare,
+          pool_amount: poolAmount,
+          prize_per_quarter: Math.round(poolAmount / 4),
+          prize_split: { q1: 25, q2: 25, q3: 25, q4: 25 },
+          winner_pct: 80,
+          invite_enabled: true,
         })
         .select()
         .single();
@@ -309,6 +318,39 @@ export default function LandingPage() {
                 />
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium mb-1 text-muted-foreground">Max Players</label>
+                <select
+                  value={createForm.maxPlayers}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, maxPlayers: Number(e.target.value) }))}
+                  className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value={5}>5 players</option>
+                  <option value={10}>10 players</option>
+                  <option value={20}>20 players</option>
+                  <option value={25}>25 players</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1 text-muted-foreground">Price / Square</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.50"
+                    value={createForm.pricePerSquare}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, pricePerSquare: Math.max(0, Number(e.target.value)) }))}
+                    className="w-full bg-input border border-border rounded-lg pl-7 pr-3 py-2 text-sm tabular-nums"
+                  />
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground text-center">
+              Total Pot: <span className="font-semibold text-foreground">${(createForm.pricePerSquare * 100).toFixed(0)}</span>
+              {" "}({100 / createForm.maxPlayers} squares/player)
+            </p>
             <div className="border-t border-border pt-3 mt-1">
               <p className="text-xs text-muted-foreground mb-2">Your info (game admin)</p>
               <div className="grid grid-cols-2 gap-3">
