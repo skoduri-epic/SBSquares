@@ -1,0 +1,164 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-winner: var(--winner);
+  --color-runner-up: var(--runner-up);
+  --color-patriots: var(--patriots);
+  --color-seahawks: var(--seahawks);
+  --font-display: var(--font-bebas-neue);
+  --font-sans: var(--font-source-sans);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  /* Super Bowl Squares - Light Theme */
+  --background: #F5F7FA;
+  --foreground: #0F172A;
+  --card: #FFFFFF;
+  --card-foreground: #0F172A;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+  --primary: #2563EB;
+  --primary-foreground: #FFFFFF;
+  --secondary: #E2E8F0;
+  --secondary-foreground: #334155;
+  --muted: #F1F5F9;
+  --muted-foreground: #64748B;
+  --accent: #EA580C;
+  --accent-foreground: #FFFFFF;
+  --destructive: #DC2626;
+  --border: #E2E8F0;
+  --input: #F1F5F9;
+  --ring: #2563EB;
+
+  /* Team Colors */
+  --patriots: #002244;
+  --patriots-accent: #C60C30;
+  --patriots-silver: #B0B7BC;
+  --seahawks: #002A5C;
+  --seahawks-accent: #69BE28;
+  --seahawks-gray: #A5ACAF;
+
+  /* Winner / Runner-up */
+  --winner: #D97706;
+  --runner-up: #64748B;
+
+  /* Chart Colors */
+  --chart-1: #2563EB;
+  --chart-2: #16A34A;
+  --chart-3: #EA580C;
+  --chart-4: #DC2626;
+  --chart-5: #9333EA;
+
+  /* 10 Player Colors */
+  --player-0: #3B82F6;
+  --player-1: #EF4444;
+  --player-2: #22C55E;
+  --player-3: #F59E0B;
+  --player-4: #A855F7;
+  --player-5: #EC4899;
+  --player-6: #06B6D4;
+  --player-7: #F97316;
+  --player-8: #6366F1;
+  --player-9: #14B8A6;
+
+  /* Fonts */
+  --font-bebas-neue: 'Bebas Neue', sans-serif;
+  --font-source-sans: 'Source Sans 3', system-ui, sans-serif;
+
+  --radius: 0.625rem;
+}
+
+.dark {
+  /* Super Bowl Squares - Dark Sports Theme */
+  --background: #0B0F1A;
+  --foreground: #E8ECF4;
+  --card: #131829;
+  --card-foreground: #E8ECF4;
+  --popover: #131829;
+  --popover-foreground: #E8ECF4;
+  --primary: #3B82F6;
+  --primary-foreground: #FFFFFF;
+  --secondary: #1E2538;
+  --secondary-foreground: #CBD5E1;
+  --muted: #1A2035;
+  --muted-foreground: #64748B;
+  --accent: #F97316;
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --border: #1E293B;
+  --input: #1E2538;
+  --ring: #3B82F6;
+
+  /* Winner / Runner-up */
+  --winner: #F59E0B;
+  --runner-up: #94A3B8;
+
+  /* Chart Colors */
+  --chart-1: #3B82F6;
+  --chart-2: #69BE28;
+  --chart-3: #F97316;
+  --chart-4: #EF4444;
+  --chart-5: #A855F7;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased transition-colors duration-200;
+  }
+  h1, h2, h3 {
+    font-family: var(--font-bebas-neue);
+    @apply tracking-wide;
+  }
+}
+
+/* Grid cell animations */
+@keyframes pulse-available {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.cell-available {
+  animation: pulse-available 2s ease-in-out infinite;
+}
+
+@keyframes winner-glow {
+  0%, 100% { box-shadow: 0 0 8px var(--winner); }
+  50% { box-shadow: 0 0 20px var(--winner); }
+}
+
+.cell-winner {
+  animation: winner-glow 2s ease-in-out infinite;
+}
