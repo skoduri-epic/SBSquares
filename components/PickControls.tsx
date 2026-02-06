@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useGameContext } from "./GameProvider";
 import { supabase } from "~/lib/supabase";
-import { pickRandomSquares, getPlayerInitials } from "~/lib/game-logic";
+import { pickRandomSquares, getPlayerInitials, getDraftConfig } from "~/lib/game-logic";
 import { cn } from "~/lib/utils";
 import { Shuffle, MousePointer2, Check, Clock } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/ui/tooltip";
@@ -21,6 +21,9 @@ export function PickControls({ onPickingStateChange }: PickControlsProps) {
 
   const batch = game.status === "batch1" ? 1 : game.status === "batch2" ? 2 : null;
   if (!batch) return null;
+
+  const isSingleBatch = getDraftConfig(game.max_players).batches === 1;
+  const batchLabel = isSingleBatch ? "Draft" : `Batch ${batch}`;
 
   // Build player map for names/colors
   const playerMap = new Map(players.map((p) => [p.id, p]));
@@ -44,7 +47,7 @@ export function PickControls({ onPickingStateChange }: PickControlsProps) {
     return (
       <div className="mt-3">
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 text-center">
-          Batch {batch} Draft Order
+          {batchLabel} Draft Order
         </p>
         <TooltipProvider>
           <div className="flex flex-wrap gap-2 justify-center">
@@ -94,7 +97,7 @@ export function PickControls({ onPickingStateChange }: PickControlsProps) {
           {picksRemaining <= 0 ? (
             <p className="text-sm text-primary font-medium">
               <Check className="inline w-4 h-4 mr-1" />
-              You&apos;ve picked all your squares for Batch {batch}!
+              You&apos;ve picked all your squares{!isSingleBatch ? ` for Batch ${batch}` : ""}!
             </p>
           ) : currentPickerPlayer ? (
             <p className="text-sm text-muted-foreground">
@@ -161,7 +164,7 @@ export function PickControls({ onPickingStateChange }: PickControlsProps) {
       <div className="bg-card border border-border rounded-lg p-4">
         <p className="text-sm text-center mb-3">
           <span className="text-accent font-semibold">Your turn!</span>{" "}
-          Pick {picksRemaining} squares for Batch {batch}
+          Pick {picksRemaining} square{picksRemaining !== 1 ? "s" : ""}{!isSingleBatch ? ` for Batch ${batch}` : ""}
         </p>
         <div className="flex gap-2">
           <button

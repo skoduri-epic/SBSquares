@@ -4,7 +4,7 @@ import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GameProvider, useGameContext } from "~/components/GameProvider";
 import { supabase } from "~/lib/supabase";
-import { generateDraftOrder, generateDigitPermutation, calculateQuarterResult, pickRandomSquares, getPlayerInitials, calculatePrizes } from "~/lib/game-logic";
+import { generateDraftOrder, generateDigitPermutation, calculateQuarterResult, pickRandomSquares, getPlayerInitials, calculatePrizes, getDraftConfig } from "~/lib/game-logic";
 import type { Quarter } from "~/lib/types";
 import { PLAYER_COLORS } from "~/lib/types";
 import { cn } from "~/lib/utils";
@@ -87,16 +87,20 @@ function AdminView({ gameId }: { gameId: string }) {
   const batch1Order = draftOrder.filter((d) => d.batch === 1).sort((a, b) => a.pick_order - b.pick_order);
   const batch2Order = draftOrder.filter((d) => d.batch === 2).sort((a, b) => a.pick_order - b.pick_order);
 
+  const draftConfig = getDraftConfig(game.max_players);
+  const isSingleBatch = draftConfig.batches === 1;
+
   async function startBatch(batchNum: 1 | 2) {
     setLoading(`batch${batchNum}`);
     try {
       const order = generateDraftOrder(players.map((p) => p.id));
+      const picksForBatch = batchNum === 1 ? draftConfig.batch1Picks : draftConfig.batch2Picks;
       const draftEntries = order.map((playerId, i) => ({
         game_id: game!.id,
         batch: batchNum,
         player_id: playerId,
         pick_order: i + 1,
-        picks_remaining: 5,
+        picks_remaining: picksForBatch,
       }));
 
       await supabase.from("draft_order").insert(draftEntries);
@@ -232,9 +236,10 @@ function AdminView({ gameId }: { gameId: string }) {
         .eq("player_id", playerId);
 
       if (batch) {
+        const picksForBatch = batch === 1 ? draftConfig.batch1Picks : draftConfig.batch2Picks;
         await supabase
           .from("draft_order")
-          .update({ picks_remaining: 5 })
+          .update({ picks_remaining: picksForBatch })
           .eq("game_id", game!.id)
           .eq("batch", batch)
           .eq("player_id", playerId);
@@ -516,8 +521,8 @@ function AdminView({ gameId }: { gameId: string }) {
       setAddPlayerError("PIN must be exactly 4 digits");
       return;
     }
-    if (players.length >= 10) {
-      setAddPlayerError("Maximum 10 players per game");
+    if (players.length >= game!.max_players) {
+      setAddPlayerError(`Maximum ${game!.max_players} players per game`);
       return;
     }
     const duplicate = players.find(
@@ -589,10 +594,10 @@ function AdminView({ gameId }: { gameId: string }) {
       return;
     }
 
-    // Check max 10 total
-    const slotsAvailable = 10 - players.length;
+    // Check max players total
+    const slotsAvailable = game!.max_players - players.length;
     if (names.length > slotsAvailable) {
-      setBulkError(`Only ${slotsAvailable} slot${slotsAvailable !== 1 ? "s" : ""} available (${players.length} of 10 used)`);
+      setBulkError(`Only ${slotsAvailable} slot${slotsAvailable !== 1 ? "s" : ""} available (${players.length} of ${game!.max_players} used)`);
       return;
     }
 
@@ -1190,13 +1195,34 @@ function AdminView({ gameId }: { gameId: string }) {
               className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg px-4 py-3 font-medium transition-colors disabled:opacity-50"
             >
               <Play className="w-4 h-4" />
-              {loading === "batch1" ? "Starting..." : "Start Batch 1"}
+              {loading === "batch1" ? "Starting..." : isSingleBatch ? "Start Draft" : "Start Batch 1"}
             </button>
           )}
 
           {game.status === "batch1" && (() => {
             const allBatch1Done = batchOrder.length > 0 && batchOrder.every(d => d.picks_remaining === 0);
             const remaining = batchOrder.filter(d => d.picks_remaining > 0).length;
+
+            if (isSingleBatch) {
+              return (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground text-center">
+                    {allBatch1Done
+                      ? "All picks complete. Ready to reveal numbers."
+                      : `Draft in progress... ${remaining} player${remaining !== 1 ? "s" : ""} still picking.`}
+                  </p>
+                  <button
+                    onClick={revealDigits}
+                    disabled={!!loading || !allBatch1Done}
+                    className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-accent-foreground rounded-lg px-4 py-3 font-medium transition-colors disabled:opacity-50"
+                  >
+                    <Eye className="w-4 h-4" />
+                    {loading === "reveal" ? "Revealing..." : "Reveal Numbers"}
+                  </button>
+                </div>
+              );
+            }
+
             return (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground text-center">
@@ -1216,7 +1242,7 @@ function AdminView({ gameId }: { gameId: string }) {
             );
           })()}
 
-          {game.status === "batch2" && (() => {
+          {!isSingleBatch && game.status === "batch2" && (() => {
             const allBatch2Done = batchOrder.length > 0 && batchOrder.every(d => d.picks_remaining === 0);
             const remaining = batchOrder.filter(d => d.picks_remaining > 0).length;
             return (
@@ -1292,7 +1318,7 @@ function AdminView({ gameId }: { gameId: string }) {
             <TooltipProvider>
               {batch1Order.length > 0 && (
                 <div className="space-y-2">
-                  <span className="text-xs text-muted-foreground uppercase tracking-wider">Batch 1</span>
+                  {!isSingleBatch && <span className="text-xs text-muted-foreground uppercase tracking-wider">Batch 1</span>}
                   <div className="flex flex-wrap gap-2 justify-center">
                     {batch1Order.map((d) => {
                       const p = playerMap.get(d.player_id);
@@ -1662,19 +1688,19 @@ function AdminView({ gameId }: { gameId: string }) {
             <div className="mt-3 flex gap-2">
               <button
                 onClick={() => { setAddingPlayer(true); setAddPlayerError(""); setBulkAdding(false); }}
-                disabled={players.length >= 10}
+                disabled={players.length >= game.max_players}
                 className="flex-1 flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/60 hover:border-border rounded-lg py-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <Plus className="w-3.5 h-3.5" />
-                {players.length >= 10 ? "Max 10" : "Add Player"}
+                {players.length >= game.max_players ? `Max ${game.max_players}` : "Add Player"}
               </button>
               <button
                 onClick={() => { setBulkAdding(true); setBulkError(""); setAddingPlayer(false); }}
-                disabled={players.length >= 10}
+                disabled={players.length >= game.max_players}
                 className="flex-1 flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/60 hover:border-border rounded-lg py-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <Users className="w-3.5 h-3.5" />
-                {players.length >= 10 ? "Max 10" : "Bulk Add"}
+                {players.length >= game.max_players ? `Max ${game.max_players}` : "Bulk Add"}
               </button>
             </div>
           )}
