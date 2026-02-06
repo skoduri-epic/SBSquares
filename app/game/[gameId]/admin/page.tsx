@@ -8,7 +8,7 @@ import { generateDraftOrder, generateDigitPermutation, calculateQuarterResult, p
 import type { Quarter } from "~/lib/types";
 import { PLAYER_COLORS } from "~/lib/types";
 import { cn } from "~/lib/utils";
-import { ArrowLeft, Play, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X } from "lucide-react";
+import { ArrowLeft, Play, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X, Users, Copy, Check } from "lucide-react";
 import { setSession } from "~/hooks/use-game";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/ui/tooltip";
 import {
@@ -56,6 +56,11 @@ function AdminView({ gameId }: { gameId: string }) {
   const [newPlayerName, setNewPlayerName] = useState("");
   const [newPlayerPin, setNewPlayerPin] = useState("");
   const [addPlayerError, setAddPlayerError] = useState("");
+  const [bulkAdding, setBulkAdding] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [bulkError, setBulkError] = useState("");
+  const [bulkResult, setBulkResult] = useState<{ name: string; pin: string; color: string }[] | null>(null);
+  const [bulkCopied, setBulkCopied] = useState(false);
 
   if (!game || !session?.isAdmin) {
     return (
@@ -455,6 +460,105 @@ function AdminView({ gameId }: { gameId: string }) {
     } finally {
       setLoading("");
     }
+  }
+
+  function generatePin(): string {
+    return String(Math.floor(1000 + Math.random() * 9000));
+  }
+
+  async function bulkAddPlayers() {
+    setBulkError("");
+    // Parse names from text: split by newline or comma
+    const raw = bulkText
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+
+    if (raw.length === 0) {
+      setBulkError("Enter at least one player name");
+      return;
+    }
+
+    // Deduplicate within the input list
+    const seen = new Set<string>();
+    const names: string[] = [];
+    for (const n of raw) {
+      const key = n.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      names.push(n);
+    }
+
+    // Check against existing players
+    const existingNames = new Set(players.map((p) => p.name.toLowerCase()));
+    const dupes = names.filter((n) => existingNames.has(n.toLowerCase()));
+    if (dupes.length > 0) {
+      setBulkError(`Already exist: ${dupes.join(", ")}`);
+      return;
+    }
+
+    // Check max 10 total
+    const slotsAvailable = 10 - players.length;
+    if (names.length > slotsAvailable) {
+      setBulkError(`Only ${slotsAvailable} slot${slotsAvailable !== 1 ? "s" : ""} available (${players.length} of 10 used)`);
+      return;
+    }
+
+    setLoading("bulk-add");
+    try {
+      // Build player records with sequential colors
+      const usedColors = new Set(players.map((p) => p.color));
+      let colorIdx = 0;
+      const records: { name: string; pin: string; color: string }[] = [];
+      for (const name of names) {
+        // Find next available color
+        while (colorIdx < PLAYER_COLORS.length && usedColors.has(PLAYER_COLORS[colorIdx])) {
+          colorIdx++;
+        }
+        const color = colorIdx < PLAYER_COLORS.length
+          ? PLAYER_COLORS[colorIdx]
+          : PLAYER_COLORS[(players.length + records.length) % PLAYER_COLORS.length];
+        usedColors.add(color);
+        colorIdx++;
+        const pin = generatePin();
+        records.push({ name, pin, color });
+      }
+
+      const { error } = await supabase.from("players").insert(
+        records.map((r) => ({
+          game_id: game!.id,
+          name: r.name,
+          pin: r.pin,
+          is_admin: false,
+          color: r.color,
+        }))
+      );
+
+      if (error) {
+        setBulkError(error.message);
+        return;
+      }
+
+      // Show summary with PINs
+      setBulkResult(records);
+      setBulkText("");
+      reload();
+    } catch (err) {
+      console.error("Bulk add failed:", err);
+      setBulkError("Failed to add players");
+    } finally {
+      setLoading("");
+    }
+  }
+
+  function copyBulkResult() {
+    if (!bulkResult) return;
+    const text = bulkResult
+      .map((r) => `${r.name}: PIN ${r.pin}`)
+      .join("\n");
+    navigator.clipboard.writeText(text);
+    setBulkCopied(true);
+    setTimeout(() => setBulkCopied(false), 2000);
   }
 
   async function removePlayer(playerId: string) {
@@ -1002,7 +1106,41 @@ function AdminView({ gameId }: { gameId: string }) {
               );
             })}
           </div>
-          {addingPlayer ? (
+          {/* Bulk add result summary */}
+          {bulkResult && (
+            <div className="mt-3 space-y-2 bg-secondary/30 rounded-lg p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-foreground">
+                  Added {bulkResult.length} player{bulkResult.length !== 1 ? "s" : ""}
+                </p>
+                <button
+                  onClick={copyBulkResult}
+                  className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+                >
+                  {bulkCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                  {bulkCopied ? "Copied" : "Copy All"}
+                </button>
+              </div>
+              <div className="space-y-1">
+                {bulkResult.map((r) => (
+                  <div key={r.name} className="flex items-center gap-2 text-xs">
+                    <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: r.color }} />
+                    <span className="flex-1 text-foreground">{r.name}</span>
+                    <span className="font-mono text-muted-foreground tabular-nums">PIN {r.pin}</span>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => setBulkResult(null)}
+                className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors pt-1"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {/* Single add player form */}
+          {addingPlayer && (
             <div className="mt-3 space-y-2 bg-secondary/30 rounded-lg p-2">
               <div className="flex items-center gap-2">
                 <div
@@ -1044,15 +1182,63 @@ function AdminView({ gameId }: { gameId: string }) {
                 <p className="text-[11px] text-destructive pl-5">{addPlayerError}</p>
               )}
             </div>
-          ) : (
-            <button
-              onClick={() => { setAddingPlayer(true); setAddPlayerError(""); }}
-              disabled={players.length >= 10}
-              className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/60 hover:border-border rounded-lg py-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              {players.length >= 10 ? "Max 10 players" : "Add Player"}
-            </button>
+          )}
+
+          {/* Bulk add form */}
+          {bulkAdding && (
+            <div className="mt-3 space-y-2 bg-secondary/30 rounded-lg p-3">
+              <p className="text-xs text-muted-foreground">
+                Enter player names, one per line or comma-separated. PINs will be auto-generated.
+              </p>
+              <textarea
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                placeholder={"Alice\nBob\nCharlie"}
+                rows={4}
+                className="w-full bg-input border border-border rounded px-3 py-2 text-sm resize-none"
+                autoFocus
+              />
+              {bulkError && (
+                <p className="text-[11px] text-destructive">{bulkError}</p>
+              )}
+              <div className="flex items-center gap-2 justify-end">
+                <button
+                  onClick={() => { setBulkAdding(false); setBulkError(""); setBulkText(""); }}
+                  className="text-muted-foreground hover:text-foreground rounded px-3 py-1 text-xs transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={bulkAddPlayers}
+                  disabled={loading === "bulk-add"}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground rounded px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50"
+                >
+                  {loading === "bulk-add" ? "Adding..." : "Add All"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          {!addingPlayer && !bulkAdding && !bulkResult && (
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => { setAddingPlayer(true); setAddPlayerError(""); setBulkAdding(false); }}
+                disabled={players.length >= 10}
+                className="flex-1 flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/60 hover:border-border rounded-lg py-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                {players.length >= 10 ? "Max 10" : "Add Player"}
+              </button>
+              <button
+                onClick={() => { setBulkAdding(true); setBulkError(""); setAddingPlayer(false); }}
+                disabled={players.length >= 10}
+                className="flex-1 flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/60 hover:border-border rounded-lg py-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <Users className="w-3.5 h-3.5" />
+                {players.length >= 10 ? "Max 10" : "Bulk Add"}
+              </button>
+            </div>
           )}
         </section>
       </main>
