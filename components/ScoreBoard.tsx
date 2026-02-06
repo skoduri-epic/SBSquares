@@ -53,6 +53,16 @@ export function ScoreBoard() {
               );
             })}
           </div>
+          {game.status === "live" && scores.length < 4 && (
+            <div className="w-16 h-0.5 mt-1.5 rounded-full bg-muted overflow-hidden relative">
+              <div
+                className="absolute top-0 h-full rounded-full bg-primary"
+                style={{
+                  animation: "progress-bar 2.5s cubic-bezier(0.4, 0.0, 0.2, 1) infinite",
+                }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Team Col (Patriots) */}
