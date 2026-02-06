@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useCallback } from "react";
+import { use, useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { GameProvider, useGameContext } from "~/components/GameProvider";
 import { Grid } from "~/components/Grid";
@@ -10,9 +10,18 @@ import { QuarterResults } from "~/components/QuarterResults";
 import { PlayerLegend } from "~/components/PlayerLegend";
 import { supabase } from "~/lib/supabase";
 import { clearSession } from "~/hooks/use-game";
-import { Settings, LogOut, Sun, Moon, HelpCircle } from "lucide-react";
+import { Settings, LogOut, Sun, Moon, HelpCircle, Info, Hash, Clock, DollarSign, AlertCircle } from "lucide-react";
 import { useTheme, getTeamSwatch } from "~/hooks/use-theme";
 import { cn } from "~/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "~/components/ui/dialog";
 
 export default function GamePage({
   params,
@@ -32,7 +41,17 @@ function GameView({ gameId }: { gameId: string }) {
   const router = useRouter();
   const { game, session, scores, draftOrder, loading, error, reload } = useGameContext();
   const [isManualPicking, setIsManualPicking] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const { theme, toggleTheme, team, setTeam } = useTheme();
+
+  // Auto-show rules modal on first visit per game
+  useEffect(() => {
+    const key = `sbsquares-rules-seen-${gameId}`;
+    if (!localStorage.getItem(key)) {
+      setRulesOpen(true);
+      localStorage.setItem(key, "1");
+    }
+  }, [gameId]);
 
   const batch = game?.status === "batch1" ? 1 : game?.status === "batch2" ? 2 : null;
   const batchOrder = draftOrder.filter((d) => d.batch === batch);
@@ -128,6 +147,13 @@ function GameView({ gameId }: { gameId: string }) {
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
             <button
+              onClick={() => setRulesOpen(true)}
+              className="p-2 rounded-lg hover:bg-secondary transition-colors"
+              aria-label="Game rules"
+            >
+              <Info className="w-4 h-4" />
+            </button>
+            <button
               onClick={() => router.push("/help")}
               className="p-2 rounded-lg hover:bg-secondary transition-colors"
               aria-label="How to play"
@@ -208,6 +234,61 @@ function GameView({ gameId }: { gameId: string }) {
         {/* Quarter Results */}
         <QuarterResults />
       </main>
+
+      {/* Game Rules Modal */}
+      <Dialog open={rulesOpen} onOpenChange={setRulesOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-xl tracking-wider">Game Rules</DialogTitle>
+            <DialogDescription className="sr-only">Key rules for Super Bowl Squares</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex gap-3">
+              <Hash className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-foreground">Only the ones digit counts</p>
+                <p className="text-xs text-muted-foreground">
+                  A score of 27-14 means digits 7 and 4. The last digit of each team's score determines the winning square.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <Clock className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-foreground">Winner decided each quarter</p>
+                <p className="text-xs text-muted-foreground">
+                  The score at the end of each quarter (Q1-Q4) finalizes that quarter's winning square.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <DollarSign className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-foreground">20% winner, 5% runner-up per quarter</p>
+                <p className="text-xs text-muted-foreground">
+                  The winning square gets 20% of the pot. The runner-up (digits swapped) gets 5%. If both digits match (e.g. 3-3), one player wins 25%.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <AlertCircle className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-foreground">4 quarters only, no overtime</p>
+                <p className="text-xs text-muted-foreground">
+                  Winners are determined for Q1 through Q4 only. Overtime scores are not considered.
+                </p>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg px-4 py-2.5 text-sm font-medium transition-colors">
+                Got it
+              </button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
