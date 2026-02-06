@@ -10,7 +10,7 @@ import { QuarterResults } from "~/components/QuarterResults";
 import { PlayerLegend } from "~/components/PlayerLegend";
 import { supabase } from "~/lib/supabase";
 import { clearSession } from "~/hooks/use-game";
-import { Settings, LogOut, Sun, Moon } from "lucide-react";
+import { Settings, LogOut, Sun, Moon, HelpCircle } from "lucide-react";
 import { useTheme, getTeamSwatch } from "~/hooks/use-theme";
 import { cn } from "~/lib/utils";
 
@@ -126,6 +126,13 @@ function GameView({ gameId }: { gameId: string }) {
               aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             >
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => router.push("/help")}
+              className="p-2 rounded-lg hover:bg-secondary transition-colors"
+              aria-label="How to play"
+            >
+              <HelpCircle className="w-4 h-4" />
             </button>
             {session?.isAdmin && (
               <button

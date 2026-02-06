@@ -108,7 +108,8 @@ export function Grid({ onPickSquare, isMyTurn = false, activeQuarterScores = [] 
                   className={cn(
                     cellSize,
                     "flex items-center justify-center rounded-md bg-secondary font-extrabold text-sm sm:text-lg md:text-2xl flex-shrink-0",
-                    "transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
+                    "transition-all duration-200 hover:shadow-md hover:-translate-y-0.5",
+                    hasDigits && colDigits[i] !== null && "text-primary"
                   )}
                 >
                   {hasDigits && colDigits[i] !== null ? (
@@ -133,7 +134,8 @@ export function Grid({ onPickSquare, isMyTurn = false, activeQuarterScores = [] 
                   className={cn(
                     cellSize,
                     "flex items-center justify-center rounded-md bg-secondary font-extrabold text-sm sm:text-lg md:text-2xl flex-shrink-0",
-                    "transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
+                    "transition-all duration-200 hover:shadow-md hover:-translate-y-0.5",
+                    hasDigits && rowDigits[r] !== null && "text-primary"
                   )}
                 >
                   {hasDigits && rowDigits[r] !== null ? (

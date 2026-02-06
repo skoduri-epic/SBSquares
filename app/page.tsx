@@ -7,6 +7,7 @@ import { setSession, getSession } from "~/hooks/use-game";
 import type { Game, Player } from "~/lib/types";
 import { PLAYER_COLORS } from "~/lib/types";
 import { Lock } from "lucide-react";
+import Link from "next/link";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -218,6 +219,12 @@ export default function LandingPage() {
           <p className="text-sm text-muted-foreground mt-2">
             Chemicos2k Pool
           </p>
+          <Link
+            href="/help"
+            className="inline-block text-xs text-primary hover:underline mt-1"
+          >
+            How to Play
+          </Link>
         </div>
 
         {step === "code" && (
