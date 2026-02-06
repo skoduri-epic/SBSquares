@@ -8,7 +8,8 @@ import { generateDraftOrder, generateDigitPermutation, calculateQuarterResult, p
 import type { Quarter } from "~/lib/types";
 import { PLAYER_COLORS } from "~/lib/types";
 import { cn } from "~/lib/utils";
-import { ArrowLeft, Play, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X, Users, Copy, Check } from "lucide-react";
+import { ArrowLeft, Play, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X, Users, Copy, Check, QrCode, Link2, Share2 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { setSession } from "~/hooks/use-game";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/ui/tooltip";
 import {
@@ -61,6 +62,7 @@ function AdminView({ gameId }: { gameId: string }) {
   const [bulkError, setBulkError] = useState("");
   const [bulkResult, setBulkResult] = useState<{ name: string; pin: string; color: string }[] | null>(null);
   const [bulkCopied, setBulkCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   if (!game || !session?.isAdmin) {
     return (
@@ -739,6 +741,120 @@ function AdminView({ gameId }: { gameId: string }) {
               )}
             </div>
           )}
+        </section>
+
+        {/* Invite / QR Code */}
+        <section className="bg-card border border-border rounded-lg p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl tracking-wider">Invite Players</h2>
+            <span className="text-xs text-muted-foreground">
+              <Users className="inline w-3.5 h-3.5 mr-1" />
+              {players.length} / {game.max_players}
+            </span>
+          </div>
+
+          {(() => {
+            const joinUrl = typeof window !== "undefined"
+              ? `${window.location.origin}/join/${game.game_code}`
+              : `/join/${game.game_code}`;
+            const isFull = players.length >= game.max_players;
+            const pastJoining = !["setup", "batch1", "batch2"].includes(game.status);
+            const inviteActive = game.invite_enabled && !isFull && !pastJoining;
+
+            return (
+              <div className="space-y-3">
+                {/* QR Code */}
+                <div className="flex justify-center py-2">
+                  <div className={cn(
+                    "bg-white rounded-lg p-3 transition-opacity",
+                    !inviteActive && "opacity-40"
+                  )}>
+                    <QRCodeSVG
+                      value={joinUrl}
+                      size={160}
+                      level="M"
+                    />
+                  </div>
+                </div>
+
+                {/* Join URL + Copy/Share */}
+                <div className="flex items-center gap-2 bg-secondary/30 rounded-lg px-3 py-2">
+                  <Link2 className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                  <span className="flex-1 text-xs font-mono text-muted-foreground truncate">
+                    {joinUrl}
+                  </span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(joinUrl);
+                      setLinkCopied(true);
+                      setTimeout(() => setLinkCopied(false), 2000);
+                    }}
+                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors flex-shrink-0"
+                  >
+                    {linkCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    {linkCopied ? "Copied" : "Copy"}
+                  </button>
+                  {typeof navigator !== "undefined" && "share" in navigator && (
+                    <button
+                      onClick={() => {
+                        navigator.share({
+                          title: `Join ${game.name}`,
+                          text: `Join my Super Bowl Squares game! Code: ${game.game_code}`,
+                          url: joinUrl,
+                        }).catch(() => {});
+                      }}
+                      className="text-xs text-primary hover:text-primary/80 transition-colors flex-shrink-0"
+                    >
+                      <Share2 className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Invite toggle */}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Allow new players to join</span>
+                  <button
+                    onClick={async () => {
+                      setLoading("invite-toggle");
+                      try {
+                        await supabase
+                          .from("games")
+                          .update({ invite_enabled: !game.invite_enabled })
+                          .eq("id", game.id);
+                        reload();
+                      } finally {
+                        setLoading("");
+                      }
+                    }}
+                    disabled={loading === "invite-toggle"}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                      game.invite_enabled ? "bg-primary" : "bg-muted"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "inline-block h-4 w-4 rounded-full bg-white transition-transform",
+                        game.invite_enabled ? "translate-x-6" : "translate-x-1"
+                      )}
+                    />
+                  </button>
+                </div>
+
+                {/* Status notes */}
+                {isFull && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Game is full ({players.length}/{game.max_players} players).
+                  </p>
+                )}
+                {pastJoining && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Game is past the joining phase.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
         </section>
 
         {/* Game Controls */}
