@@ -49,6 +49,9 @@ function AdminView({ gameId }: { gameId: string }) {
   const [editingGameCode, setEditingGameCode] = useState(false);
   const [gameCodeInput, setGameCodeInput] = useState("");
   const [gameCodeError, setGameCodeError] = useState("");
+  const [editingTeam, setEditingTeam] = useState<"row" | "col" | null>(null);
+  const [teamNameInput, setTeamNameInput] = useState("");
+  const [teamNameError, setTeamNameError] = useState("");
   const [addingPlayer, setAddingPlayer] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState("");
   const [newPlayerPin, setNewPlayerPin] = useState("");
@@ -338,6 +341,50 @@ function AdminView({ gameId }: { gameId: string }) {
     }
   }
 
+  function startEditingTeam(axis: "row" | "col") {
+    setTeamNameInput(axis === "row" ? game!.team_row : game!.team_col);
+    setTeamNameError("");
+    setEditingTeam(axis);
+  }
+
+  async function saveTeamName() {
+    const name = teamNameInput.trim();
+    if (!name) {
+      setTeamNameError("Team name cannot be empty");
+      return;
+    }
+    if (name.length > 30) {
+      setTeamNameError("Max 30 characters");
+      return;
+    }
+    const field = editingTeam === "row" ? "team_row" : "team_col";
+    const currentValue = editingTeam === "row" ? game!.team_row : game!.team_col;
+    if (name === currentValue) {
+      setEditingTeam(null);
+      return;
+    }
+
+    setLoading("team-name");
+    setTeamNameError("");
+    try {
+      const { error } = await supabase
+        .from("games")
+        .update({ [field]: name })
+        .eq("id", game!.id);
+      if (error) {
+        setTeamNameError(error.message);
+        return;
+      }
+      setEditingTeam(null);
+      reload();
+    } catch (err) {
+      console.error("Save team name failed:", err);
+      setTeamNameError("Failed to save");
+    } finally {
+      setLoading("");
+    }
+  }
+
   async function toggleAdmin(playerId: string, currentIsAdmin: boolean) {
     setLoading(`admin-${playerId}`);
     try {
@@ -492,6 +539,100 @@ function AdminView({ gameId }: { gameId: string }) {
               >
                 <Pencil className="w-3 h-3" />
               </button>
+            </div>
+          )}
+
+          {/* Team Row name */}
+          {editingTeam === "row" ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground w-20">Team Row</span>
+                <input
+                  type="text"
+                  value={teamNameInput}
+                  onChange={(e) => setTeamNameInput(e.target.value.slice(0, 30))}
+                  className="flex-1 bg-input border border-border rounded px-3 py-1.5 text-sm"
+                  maxLength={30}
+                  autoFocus
+                />
+                <button
+                  onClick={saveTeamName}
+                  disabled={loading === "team-name"}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground rounded px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {loading === "team-name" ? "..." : "Save"}
+                </button>
+                <button
+                  onClick={() => setEditingTeam(null)}
+                  className="text-muted-foreground hover:text-foreground rounded px-2 py-1.5 text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+              {teamNameError && (
+                <p className="text-[11px] text-destructive pl-20">{teamNameError}</p>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground w-20">Team Row</span>
+              <span className="text-sm">{game.team_row}</span>
+              {game.status === "setup" && (
+                <button
+                  onClick={() => startEditingTeam("row")}
+                  className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                  title="Edit team row name"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Team Col name */}
+          {editingTeam === "col" ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground w-20">Team Col</span>
+                <input
+                  type="text"
+                  value={teamNameInput}
+                  onChange={(e) => setTeamNameInput(e.target.value.slice(0, 30))}
+                  className="flex-1 bg-input border border-border rounded px-3 py-1.5 text-sm"
+                  maxLength={30}
+                  autoFocus
+                />
+                <button
+                  onClick={saveTeamName}
+                  disabled={loading === "team-name"}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground rounded px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {loading === "team-name" ? "..." : "Save"}
+                </button>
+                <button
+                  onClick={() => setEditingTeam(null)}
+                  className="text-muted-foreground hover:text-foreground rounded px-2 py-1.5 text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+              {teamNameError && (
+                <p className="text-[11px] text-destructive pl-20">{teamNameError}</p>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground w-20">Team Col</span>
+              <span className="text-sm">{game.team_col}</span>
+              {game.status === "setup" && (
+                <button
+                  onClick={() => startEditingTeam("col")}
+                  className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                  title="Edit team column name"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              )}
             </div>
           )}
         </section>
