@@ -77,6 +77,16 @@ function AdminView({ gameId }: { gameId: string }) {
     );
   }
 
+  // Safe defaults for new fields that may be null in existing game rows
+  const safeGame = {
+    ...game,
+    max_players: game.max_players ?? 10,
+    price_per_square: game.price_per_square ?? 5,
+    prize_split: game.prize_split ?? { q1: 25, q2: 25, q3: 25, q4: 25 },
+    winner_pct: game.winner_pct ?? 80,
+    invite_enabled: game.invite_enabled ?? true,
+  };
+
   const batch = game.status === "batch1" ? 1 : game.status === "batch2" ? 2 : null;
   const batchOrder = draftOrder
     .filter((d) => d.batch === batch)
@@ -87,7 +97,7 @@ function AdminView({ gameId }: { gameId: string }) {
   const batch1Order = draftOrder.filter((d) => d.batch === 1).sort((a, b) => a.pick_order - b.pick_order);
   const batch2Order = draftOrder.filter((d) => d.batch === 2).sort((a, b) => a.pick_order - b.pick_order);
 
-  const draftConfig = getDraftConfig(game.max_players);
+  const draftConfig = getDraftConfig(safeGame.max_players);
   const isSingleBatch = draftConfig.batches === 1;
 
   async function startBatch(batchNum: 1 | 2) {
@@ -845,7 +855,7 @@ function AdminView({ gameId }: { gameId: string }) {
             <span className="text-sm text-muted-foreground w-20">Players</span>
             {game.status === "setup" && players.length <= 1 ? (
               <select
-                value={game.max_players}
+                value={safeGame.max_players}
                 onChange={(e) => saveMaxPlayers(parseInt(e.target.value))}
                 disabled={loading === "max-players"}
                 className="bg-input border border-border rounded px-2 py-1 text-sm"
@@ -856,7 +866,7 @@ function AdminView({ gameId }: { gameId: string }) {
               </select>
             ) : (
               <span className="text-sm flex items-center gap-1">
-                {game.max_players} players
+                {safeGame.max_players} players
                 <Lock className="w-3 h-3 text-muted-foreground" />
               </span>
             )}
@@ -902,13 +912,13 @@ function AdminView({ gameId }: { gameId: string }) {
           ) : (
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground w-20">$/Square</span>
-              <span className="text-sm tabular-nums">${Number(game.price_per_square).toFixed(2)}</span>
+              <span className="text-sm tabular-nums">${Number(safeGame.price_per_square).toFixed(2)}</span>
               <span className="text-[10px] text-muted-foreground">
-                (Pot: ${(game.price_per_square * 100).toFixed(0)})
+                (Pot: ${(safeGame.price_per_square * 100).toFixed(0)})
               </span>
               {game.status === "setup" && (
                 <button
-                  onClick={() => { setPriceInput(String(game.price_per_square)); setEditingConfig("price"); setConfigError(""); }}
+                  onClick={() => { setPriceInput(String(safeGame.price_per_square)); setEditingConfig("price"); setConfigError(""); }}
                   className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                   title="Edit price per square"
                 >
@@ -956,10 +966,10 @@ function AdminView({ gameId }: { gameId: string }) {
           ) : (
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground w-20">Win/RU</span>
-              <span className="text-sm tabular-nums">{game.winner_pct}% / {100 - game.winner_pct}%</span>
+              <span className="text-sm tabular-nums">{safeGame.winner_pct}% / {100 - safeGame.winner_pct}%</span>
               {game.status === "setup" && (
                 <button
-                  onClick={() => { setWinnerPctInput(String(game.winner_pct)); setEditingConfig("winner-pct"); setConfigError(""); }}
+                  onClick={() => { setWinnerPctInput(String(safeGame.winner_pct)); setEditingConfig("winner-pct"); setConfigError(""); }}
                   className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                   title="Edit winner/runner-up split"
                 >
@@ -1013,7 +1023,7 @@ function AdminView({ gameId }: { gameId: string }) {
               <span className="text-xs tabular-nums">
                 {["q1", "q2", "q3", "q4"].map((q, i) => (
                   <span key={q}>
-                    {i > 0 && " / "}{game.prize_split[q] ?? 25}%
+                    {i > 0 && " / "}{safeGame.prize_split[q] ?? 25}%
                   </span>
                 ))}
               </span>
@@ -1021,10 +1031,10 @@ function AdminView({ gameId }: { gameId: string }) {
                 <button
                   onClick={() => {
                     setSplitInputs({
-                      q1: String(game.prize_split.q1 ?? 25),
-                      q2: String(game.prize_split.q2 ?? 25),
-                      q3: String(game.prize_split.q3 ?? 25),
-                      q4: String(game.prize_split.q4 ?? 25),
+                      q1: String(safeGame.prize_split.q1 ?? 25),
+                      q2: String(safeGame.prize_split.q2 ?? 25),
+                      q3: String(safeGame.prize_split.q3 ?? 25),
+                      q4: String(safeGame.prize_split.q4 ?? 25),
                     });
                     setEditingConfig("split");
                     setConfigError("");
@@ -1040,7 +1050,7 @@ function AdminView({ gameId }: { gameId: string }) {
 
           {/* Prize Summary */}
           {(() => {
-            const prizes = calculatePrizes(game);
+            const prizes = calculatePrizes(safeGame);
             return (
               <div className="bg-secondary/30 rounded-lg px-3 py-2 space-y-1">
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Prize Summary</p>
@@ -1076,7 +1086,7 @@ function AdminView({ gameId }: { gameId: string }) {
             <h2 className="text-xl tracking-wider">Invite Players</h2>
             <span className="text-xs text-muted-foreground">
               <Users className="inline w-3.5 h-3.5 mr-1" />
-              {players.length} / {game.max_players}
+              {players.length} / {safeGame.max_players}
             </span>
           </div>
 
@@ -1084,9 +1094,9 @@ function AdminView({ gameId }: { gameId: string }) {
             const joinUrl = typeof window !== "undefined"
               ? `${window.location.origin}/join/${game.game_code}`
               : `/join/${game.game_code}`;
-            const isFull = players.length >= game.max_players;
+            const isFull = players.length >= safeGame.max_players;
             const pastJoining = !["setup", "batch1", "batch2"].includes(game.status);
-            const inviteActive = game.invite_enabled && !isFull && !pastJoining;
+            const inviteActive = safeGame.invite_enabled && !isFull && !pastJoining;
 
             return (
               <div className="space-y-3">
@@ -1146,7 +1156,7 @@ function AdminView({ gameId }: { gameId: string }) {
                       try {
                         await supabase
                           .from("games")
-                          .update({ invite_enabled: !game.invite_enabled })
+                          .update({ invite_enabled: !safeGame.invite_enabled })
                           .eq("id", game.id);
                         reload();
                       } finally {
@@ -1156,13 +1166,13 @@ function AdminView({ gameId }: { gameId: string }) {
                     disabled={loading === "invite-toggle"}
                     className={cn(
                       "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                      game.invite_enabled ? "bg-primary" : "bg-muted"
+                      safeGame.invite_enabled ? "bg-primary" : "bg-muted"
                     )}
                   >
                     <span
                       className={cn(
                         "inline-block h-4 w-4 rounded-full bg-white transition-transform",
-                        game.invite_enabled ? "translate-x-6" : "translate-x-1"
+                        safeGame.invite_enabled ? "translate-x-6" : "translate-x-1"
                       )}
                     />
                   </button>
@@ -1171,7 +1181,7 @@ function AdminView({ gameId }: { gameId: string }) {
                 {/* Status notes */}
                 {isFull && (
                   <p className="text-xs text-muted-foreground text-center">
-                    Game is full ({players.length}/{game.max_players} players).
+                    Game is full ({players.length}/{safeGame.max_players} players).
                   </p>
                 )}
                 {pastJoining && (
@@ -1688,19 +1698,19 @@ function AdminView({ gameId }: { gameId: string }) {
             <div className="mt-3 flex gap-2">
               <button
                 onClick={() => { setAddingPlayer(true); setAddPlayerError(""); setBulkAdding(false); }}
-                disabled={players.length >= game.max_players}
+                disabled={players.length >= safeGame.max_players}
                 className="flex-1 flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/60 hover:border-border rounded-lg py-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <Plus className="w-3.5 h-3.5" />
-                {players.length >= game.max_players ? `Max ${game.max_players}` : "Add Player"}
+                {players.length >= safeGame.max_players ? `Max ${safeGame.max_players}` : "Add Player"}
               </button>
               <button
                 onClick={() => { setBulkAdding(true); setBulkError(""); setAddingPlayer(false); }}
-                disabled={players.length >= game.max_players}
+                disabled={players.length >= safeGame.max_players}
                 className="flex-1 flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border/60 hover:border-border rounded-lg py-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <Users className="w-3.5 h-3.5" />
-                {players.length >= game.max_players ? `Max ${game.max_players}` : "Bulk Add"}
+                {players.length >= safeGame.max_players ? `Max ${safeGame.max_players}` : "Bulk Add"}
               </button>
             </div>
           )}

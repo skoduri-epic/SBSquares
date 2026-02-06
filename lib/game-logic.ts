@@ -200,18 +200,21 @@ export function calculatePrizes(game: Game): {
     sameDigitPrize: number;
   }[];
 } {
-  const totalPot = game.price_per_square * 100;
-  const runnerUpPct = 100 - game.winner_pct;
+  const pricePerSquare = game.price_per_square ?? 5;
+  const winnerPct = game.winner_pct ?? 80;
+  const prizeSplit = game.prize_split ?? { q1: 25, q2: 25, q3: 25, q4: 25 };
+  const totalPot = pricePerSquare * 100;
+  const runnerUpPct = 100 - winnerPct;
 
   return {
     totalPot,
     quarters: (["Q1", "Q2", "Q3", "Q4"] as const).map((q) => {
-      const quarterPct = game.prize_split[q] ?? game.prize_split[q.toLowerCase()] ?? 25;
+      const quarterPct = prizeSplit[q] ?? prizeSplit[q.toLowerCase()] ?? 25;
       const quarterPot = Math.round(totalPot * quarterPct / 100);
       return {
         quarter: q,
         quarterPot,
-        winnerPrize: Math.round(quarterPot * game.winner_pct / 100),
+        winnerPrize: Math.round(quarterPot * winnerPct / 100),
         runnerUpPrize: Math.round(quarterPot * runnerUpPct / 100),
         sameDigitPrize: quarterPot,
       };

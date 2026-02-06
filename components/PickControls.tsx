@@ -22,7 +22,7 @@ export function PickControls({ onPickingStateChange }: PickControlsProps) {
   const batch = game.status === "batch1" ? 1 : game.status === "batch2" ? 2 : null;
   if (!batch) return null;
 
-  const isSingleBatch = getDraftConfig(game.max_players).batches === 1;
+  const isSingleBatch = getDraftConfig(game.max_players ?? 10).batches === 1;
   const batchLabel = isSingleBatch ? "Draft" : `Batch ${batch}`;
 
   // Build player map for names/colors

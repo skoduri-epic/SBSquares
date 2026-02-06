@@ -40,7 +40,11 @@ export default function JoinPage({
         return;
       }
 
-      const g = gameData as Game;
+      const g = {
+        ...(gameData as Game),
+        max_players: (gameData as Game).max_players ?? 10,
+        invite_enabled: (gameData as Game).invite_enabled ?? true,
+      };
 
       if (!g.invite_enabled) {
         setErrorMessage("This game is not accepting new players.");
