@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { GameProvider, useGameContext } from "~/components/GameProvider";
 import { supabase } from "~/lib/supabase";
@@ -8,8 +8,8 @@ import { generateDraftOrder, generateDigitPermutation, calculateQuarterResult, p
 import type { Quarter } from "~/lib/types";
 import { PLAYER_COLORS } from "~/lib/types";
 import { cn } from "~/lib/utils";
-import { ArrowLeft, Play, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X, Users, Copy, Check, Link2, Share2, Lock, DollarSign } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
+import { ArrowLeft, Play, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X, Users, Copy, Check, Link2, Share2, Lock, DollarSign, Download, Image } from "lucide-react";
+import { QRCodeCanvas } from "qrcode.react";
 import { setSession } from "~/hooks/use-game";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/ui/tooltip";
 import {
@@ -63,6 +63,8 @@ function AdminView({ gameId }: { gameId: string }) {
   const [bulkResult, setBulkResult] = useState<{ name: string; pin: string; color: string }[] | null>(null);
   const [bulkCopied, setBulkCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [qrCopied, setQrCopied] = useState(false);
+  const qrRef = useRef<HTMLDivElement>(null);
   const [editingConfig, setEditingConfig] = useState<string | null>(null);
   const [configError, setConfigError] = useState("");
   const [priceInput, setPriceInput] = useState("");
@@ -1125,16 +1127,66 @@ function AdminView({ gameId }: { gameId: string }) {
             return (
               <div className="space-y-3">
                 {/* QR Code */}
-                <div className="flex justify-center py-2">
-                  <div className={cn(
-                    "bg-white rounded-lg p-3 transition-opacity",
-                    !inviteActive && "opacity-40"
-                  )}>
-                    <QRCodeSVG
+                <div className="flex flex-col items-center gap-2 py-2">
+                  <div
+                    ref={qrRef}
+                    className={cn(
+                      "bg-white rounded-lg p-3 transition-opacity",
+                      !inviteActive && "opacity-40"
+                    )}
+                  >
+                    <QRCodeCanvas
                       value={joinUrl}
                       size={160}
                       level="M"
                     />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={async () => {
+                        const canvas = qrRef.current?.querySelector("canvas");
+                        if (!canvas) return;
+                        try {
+                          const blob = await new Promise<Blob | null>((resolve) =>
+                            canvas.toBlob(resolve, "image/png")
+                          );
+                          if (blob) {
+                            await navigator.clipboard.write([
+                              new ClipboardItem({ "image/png": blob }),
+                            ]);
+                            setQrCopied(true);
+                            setTimeout(() => setQrCopied(false), 2000);
+                          }
+                        } catch {
+                          // Fallback: download instead
+                          const url = canvas.toDataURL("image/png");
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `sbsquares-${game.game_code}.png`;
+                          a.click();
+                        }
+                      }}
+                      className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+                    >
+                      {qrCopied ? <Check className="w-3 h-3" /> : <Image className="w-3 h-3" />}
+                      {qrCopied ? "Copied!" : "Copy QR"}
+                    </button>
+                    <span className="text-muted-foreground/40">|</span>
+                    <button
+                      onClick={() => {
+                        const canvas = qrRef.current?.querySelector("canvas");
+                        if (!canvas) return;
+                        const url = canvas.toDataURL("image/png");
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `sbsquares-${game.game_code}.png`;
+                        a.click();
+                      }}
+                      className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+                    >
+                      <Download className="w-3 h-3" />
+                      Save
+                    </button>
                   </div>
                 </div>
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "~/lib/supabase";
 import { setSession, getSession } from "~/hooks/use-game";
 import type { Game, Player } from "~/lib/types";
+import { MAX_GAMES } from "~/lib/constants";
 import { PLAYER_COLORS } from "~/lib/types";
 import { Lock } from "lucide-react";
 import Link from "next/link";
@@ -167,6 +168,23 @@ export default function LandingPage() {
 
     setLoading(true);
     try {
+      // Check game limit
+      const { count, error: countError } = await supabase
+        .from("games")
+        .select("*", { count: "exact", head: true });
+
+      if (countError) {
+        setError("Unable to verify game limit. Try again.");
+        return;
+      }
+
+      if ((count ?? 0) >= MAX_GAMES) {
+        setError(
+          "Maximum number of games reached (20). Contact the site admin to remove old games."
+        );
+        return;
+      }
+
       const poolAmount = createForm.pricePerSquare * 100;
 
       const { data: newGame, error: gameErr } = await supabase
