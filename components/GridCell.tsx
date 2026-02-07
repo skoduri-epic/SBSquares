@@ -43,8 +43,8 @@ export function GridCell({
           : `Square ${square.row_pos},${square.col_pos} available`
       }
       className={cn(
-        "relative flex items-center justify-center text-[10px] sm:text-xs font-semibold rounded-md transition-all duration-200",
-        "w-[32px] h-[32px] sm:w-[40px] sm:h-[40px] md:w-[52px] md:h-[52px]",
+        "relative flex items-center justify-center text-[9px] sm:text-xs font-semibold rounded-md transition-all duration-200",
+        "size-[calc((100vw-7rem)/11)] sm:size-10 md:size-[52px]",
         // Hover elevation (EventOS pattern)
         "hover:shadow-md hover:-translate-y-0.5",
         // Empty/available

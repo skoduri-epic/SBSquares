@@ -64,19 +64,20 @@ export function Grid({ onPickSquare, isMyTurn = false, activeQuarterScores = [] 
   const teamCol = game?.team_col ?? "Patriots";
   const teamRow = game?.team_row ?? "Seahawks";
 
-  const cellSize = "w-[32px] h-[32px] sm:w-[40px] sm:h-[40px] md:w-[52px] md:h-[52px]";
+  // On mobile: calc cells to fill viewport (100vw minus page padding, grid padding, team label, gaps)
+  const cellSize = "size-[calc((100vw-7rem)/11)] sm:size-10 md:size-[52px]";
   const gap = "gap-[2px] sm:gap-1";
 
   return (
-    <div className="overflow-x-auto">
-      <div className="inline-flex flex-col p-6">
+    <div className="w-full sm:overflow-x-auto">
+      <div className="flex flex-col p-1 sm:p-6 sm:inline-flex">
         {/* Main grid area: Seahawks label + (column headers + grid rows) */}
         <div className="flex">
           {/* Row team label (vertical) */}
-          <div className="flex flex-col items-center justify-center gap-1.5 pr-2 flex-shrink-0">
-            <TeamLogo teamName={teamRow} className="w-5 h-5 sm:w-6 sm:h-6 -rotate-90" />
+          <div className="flex flex-col items-center justify-center gap-1 pr-1 sm:pr-2 sm:gap-1.5 flex-shrink-0">
+            <TeamLogo teamName={teamRow} className="w-4 h-4 sm:w-6 sm:h-6 -rotate-90" />
             <h3
-              className="text-base sm:text-lg md:text-xl font-bold tracking-wider text-[color:var(--seahawks-accent)]"
+              className="text-xs sm:text-lg md:text-xl font-bold tracking-wider text-[color:var(--seahawks-accent)]"
               style={{ writingMode: "vertical-rl", textOrientation: "mixed", transform: "rotate(180deg)" }}
             >
               {teamRow}
@@ -90,10 +91,10 @@ export function Grid({ onPickSquare, isMyTurn = false, activeQuarterScores = [] 
               {/* Spacer matching row digit header */}
               <div className={cellSize} />
               <div className="flex-1 flex items-center justify-center gap-1.5">
-                <h3 className="text-base sm:text-lg md:text-xl font-bold tracking-wider text-[color:var(--patriots-accent)]">
+                <h3 className="text-xs sm:text-lg md:text-xl font-bold tracking-wider text-[color:var(--patriots-accent)]">
                   {teamCol}
                 </h3>
-                <TeamLogo teamName={teamCol} className="w-5 h-5 sm:w-6 sm:h-6" />
+                <TeamLogo teamName={teamCol} className="w-4 h-4 sm:w-6 sm:h-6" />
               </div>
             </div>
 
@@ -107,7 +108,7 @@ export function Grid({ onPickSquare, isMyTurn = false, activeQuarterScores = [] 
                   key={`col-${i}`}
                   className={cn(
                     cellSize,
-                    "flex items-center justify-center rounded-md bg-secondary font-extrabold text-sm sm:text-lg md:text-2xl flex-shrink-0",
+                    "flex items-center justify-center rounded-md bg-secondary font-extrabold text-xs sm:text-lg md:text-2xl flex-shrink-0",
                     "transition-all duration-200 hover:shadow-md hover:-translate-y-0.5",
                     hasDigits && colDigits[i] !== null && "text-primary"
                   )}
@@ -133,7 +134,7 @@ export function Grid({ onPickSquare, isMyTurn = false, activeQuarterScores = [] 
                 <div
                   className={cn(
                     cellSize,
-                    "flex items-center justify-center rounded-md bg-secondary font-extrabold text-sm sm:text-lg md:text-2xl flex-shrink-0",
+                    "flex items-center justify-center rounded-md bg-secondary font-extrabold text-xs sm:text-lg md:text-2xl flex-shrink-0",
                     "transition-all duration-200 hover:shadow-md hover:-translate-y-0.5",
                     hasDigits && rowDigits[r] !== null && "text-primary"
                   )}
