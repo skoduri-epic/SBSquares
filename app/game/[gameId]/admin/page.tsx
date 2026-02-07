@@ -40,7 +40,7 @@ export default function AdminPage({
 
 function AdminView({ gameId }: { gameId: string }) {
   const router = useRouter();
-  const { game, players, squares, scores, digitAssignments, draftOrder, session, reload } = useGameContext();
+  const { game, players, squares, scores, digitAssignments, draftOrder, session, reload, loading: gameLoading } = useGameContext();
   const [loading, setLoading] = useState("");
   const [editingPlayer, setEditingPlayer] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -70,6 +70,17 @@ function AdminView({ gameId }: { gameId: string }) {
   const [priceInput, setPriceInput] = useState("");
   const [winnerPctInput, setWinnerPctInput] = useState("");
   const [splitInputs, setSplitInputs] = useState({ q1: "", q2: "", q3: "", q4: "" });
+
+  if (gameLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">Loading game...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!game || !session?.isAdmin) {
     return (
