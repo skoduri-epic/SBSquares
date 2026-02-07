@@ -4,7 +4,7 @@ import { Toaster } from "~/components/ui/toaster";
 
 export const metadata: Metadata = {
   title: "Super Bowl Squares",
-  description: "Chemicos2k Super Bowl Squares Pool",
+  description: "Super Bowl Squares Pool",
 };
 
 export default function RootLayout({

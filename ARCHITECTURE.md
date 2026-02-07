@@ -2,7 +2,7 @@
 
 ## Current State Analysis
 
-The existing Excel spreadsheet (`Chemicos2k 2025 Super Bowl Squares.xlsx`) contains:
+The existing Excel spreadsheet (`2025 Super Bowl Squares.xlsx`) contains:
 - **Grid sheet**: 10x10 grid with player names, row/column digit assignments
 - **ChiefsScore / EaglesScore sheets**: Digit-to-row/column mapping with RAND() values for randomization
 - **Player Pick Order sheet**: 10 players with RAND()-based ordering
@@ -38,7 +38,7 @@ The existing Excel spreadsheet (`Chemicos2k 2025 Super Bowl Squares.xlsx`) conta
 -- Games table
 CREATE TABLE games (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,                    -- 'Chemicos2k Super Bowl 2025'
+  name TEXT NOT NULL,                    -- 'Super Bowl 2025'
   team_row TEXT NOT NULL,                -- 'Eagles' (Y axis)
   team_col TEXT NOT NULL,                -- 'Chiefs' (X axis)
   status TEXT NOT NULL DEFAULT 'setup',  -- setup | draft | locked | live | completed

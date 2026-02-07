@@ -226,7 +226,7 @@ export default function LandingPage() {
             SQUARES
           </h2>
           <p className="text-sm text-muted-foreground mt-2">
-            Chemicos2k Pool
+            Super Bowl Squares Pool
           </p>
           <Link
             href="/help"

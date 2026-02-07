@@ -2,7 +2,7 @@
 
 ## Context
 
-**Game:** Chemicos2k Super Bowl Squares (10x10 grid)
+**Game:** Super Bowl Squares (10x10 grid)
 **Players:** 10 friends (Suresh, Sharma, Arun, Ivs, Dms, KK, Bob, Routhu, Ramesh, Madhav)
 **Current state:** Excel spreadsheet with grid, random digit assignments, and player pick order
 **Teams:** Chiefs (X axis) vs Eagles (Y axis)
@@ -88,7 +88,7 @@
 
 - Zero onboarding friction. Users are already on WhatsApp. They are added to the group or message the bot -- done.
 - No accounts to create, no emails to verify, no links to click.
-- Every participant in a friend group called "Chemicos2k" almost certainly already has WhatsApp installed.
+- Every participant in the friend group almost certainly already has WhatsApp installed.
 - The organizer can verify participation instantly by seeing who is in the group.
 
 **This is the clear winner for onboarding.** Meeting users where they already are is the foundational UX principle.
@@ -261,4 +261,4 @@
 
 ---
 
-*Analysis prepared for the Chemicos2k Super Bowl Squares project.*
+*Analysis prepared for the Super Bowl Squares project.*

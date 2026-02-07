@@ -1,10 +1,10 @@
--- Seed data: Chemicos2k Super Bowl Squares game
+-- Seed data: Super Bowl Squares sample game
 
 -- Insert the game
 INSERT INTO games (id, name, team_row, team_col, status, game_code, pool_amount, prize_per_quarter, max_players, price_per_square, prize_split, winner_pct, invite_enabled)
 VALUES (
   'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-  'Chemicos2k Super Bowl LIX',
+  'Super Bowl LIX',
   'Seahawks',
   'Patriots',
   'setup',
