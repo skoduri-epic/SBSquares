@@ -52,8 +52,12 @@ export default function JoinPage({
         return;
       }
 
-      if (!["setup", "batch1", "batch2"].includes(g.status)) {
-        setErrorMessage("This game has already started and is no longer accepting new players.");
+      if (g.status !== "setup") {
+        setErrorMessage(
+          g.status === "batch1" || g.status === "batch2"
+            ? "This game's draft has already started. Contact the game admin to be added."
+            : "This game is no longer accepting new players."
+        );
         setStatus("error");
         return;
       }

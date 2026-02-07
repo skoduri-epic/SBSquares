@@ -101,6 +101,13 @@ function AdminView({ gameId }: { gameId: string }) {
   const isSingleBatch = draftConfig.batches === 1;
 
   async function startBatch(batchNum: 1 | 2) {
+    if (batchNum === 1 && players.length < safeGame.max_players) {
+      const confirmed = window.confirm(
+        `Only ${players.length} of ${safeGame.max_players} players have joined. ` +
+        `Starting the draft will close registration. Continue?`
+      );
+      if (!confirmed) return;
+    }
     setLoading(`batch${batchNum}`);
     try {
       const order = generateDraftOrder(players.map((p) => p.id));
@@ -116,7 +123,10 @@ function AdminView({ gameId }: { gameId: string }) {
       await supabase.from("draft_order").insert(draftEntries);
       await supabase
         .from("games")
-        .update({ status: batchNum === 1 ? "batch1" : "batch2" })
+        .update({
+          status: batchNum === 1 ? "batch1" : "batch2",
+          ...(batchNum === 1 ? { invite_enabled: false } : {}),
+        })
         .eq("id", game!.id);
 
       reload();
@@ -1694,7 +1704,7 @@ function AdminView({ gameId }: { gameId: string }) {
           )}
 
           {/* Action buttons */}
-          {!addingPlayer && !bulkAdding && !bulkResult && (
+          {!addingPlayer && !bulkAdding && !bulkResult && game.status === "setup" && (
             <div className="mt-3 flex gap-2">
               <button
                 onClick={() => { setAddingPlayer(true); setAddPlayerError(""); setBulkAdding(false); }}

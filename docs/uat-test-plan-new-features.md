@@ -576,16 +576,17 @@
 
 ---
 
-### TC-SR-008B: Registration allowed during batch1 and batch2
+### TC-SR-008B: Registration blocked during batch1 and batch2
 **Priority:** P1
 
-**Preconditions:** Game in "batch1" status. Invites enabled. Below max players.
+**Preconditions:** Game in "batch1" status. Below max players.
 
 **Steps:**
-1. Navigate to `/join/[gameCode]`. Fill out form and submit.
+1. Navigate to `/join/[gameCode]`.
 
 **Expected Result:**
-- Registration allowed. Player added successfully.
+- Error: **"This game's draft has already started. Contact the game admin to be added."**
+- No form shown. Registration is blocked once draft starts.
 
 **Pass/Fail:** ___
 
