@@ -118,18 +118,18 @@ export default function HelpPage() {
             <div className="bg-card border border-border rounded-lg p-3 space-y-1.5">
               <div className="flex items-center gap-2">
                 <DollarSign className="w-4 h-4 text-winner" />
-                <span className="text-foreground font-medium">$100 per quarter</span>
-                <span>for the winning square</span>
+                <span className="text-foreground font-medium">Winner</span>
+                <span>gets the majority of each quarter&apos;s prize (e.g. $100 at default settings)</span>
               </div>
               <div className="flex items-center gap-2">
                 <DollarSign className="w-4 h-4 text-runner-up" />
-                <span className="text-foreground font-medium">$25 per quarter</span>
-                <span>for the runner-up (digits swapped)</span>
+                <span className="text-foreground font-medium">Runner-up</span>
+                <span>(digits swapped) gets the remainder (e.g. $25)</span>
               </div>
               <p className="text-xs">
                 If both teams end with the same last digit, the winner and
-                runner-up are the same square. That player wins $125 for the
-                quarter.
+                runner-up are the same square. That player wins the full
+                quarter prize. Amounts are configured by the game admin.
               </p>
             </div>
           </div>

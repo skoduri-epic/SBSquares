@@ -264,9 +264,9 @@ function GameView({ gameId }: { gameId: string }) {
             <div className="flex gap-3">
               <DollarSign className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-medium text-foreground">20% winner, 5% runner-up per quarter</p>
+                <p className="text-sm font-medium text-foreground">Winner and runner-up each quarter</p>
                 <p className="text-xs text-muted-foreground">
-                  The winning square gets 20% of the pot. The runner-up (digits swapped) gets 5%. If both digits match (e.g. 3-3), one player wins 25%.
+                  The winning square gets the majority of each quarter&apos;s prize. The runner-up (digits swapped) gets the remainder. If both digits match (e.g. 3-3), one player wins the full quarter prize. Prize amounts are set by the game admin.
                 </p>
               </div>
             </div>
