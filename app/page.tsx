@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "~/lib/supabase";
 import { setSession, getSession } from "~/hooks/use-game";
@@ -38,8 +38,10 @@ export default function LandingPage() {
     }
   }, [router]);
 
-  async function handleCodeSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  const lookupGame = useCallback(async (code: string) => {
+    const trimmed = code.toUpperCase().trim();
+    if (trimmed.length < 3) return;
+
     setError("");
     setLoading(true);
 
@@ -47,7 +49,7 @@ export default function LandingPage() {
       const { data: gameData, error: gameError } = await supabase
         .from("games")
         .select("*")
-        .eq("game_code", gameCode.toUpperCase().trim())
+        .eq("game_code", trimmed)
         .single();
 
       if (gameError || !gameData) {
@@ -70,6 +72,24 @@ export default function LandingPage() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Auto-lookup game code after 600ms pause
+  const codeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (step !== "code") return;
+    if (codeTimerRef.current) clearTimeout(codeTimerRef.current);
+    const trimmed = gameCode.trim();
+    if (trimmed.length >= 3) {
+      codeTimerRef.current = setTimeout(() => lookupGame(trimmed), 600);
+    }
+    return () => { if (codeTimerRef.current) clearTimeout(codeTimerRef.current); };
+  }, [gameCode, step, lookupGame]);
+
+  function handleCodeSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (codeTimerRef.current) clearTimeout(codeTimerRef.current);
+    lookupGame(gameCode);
   }
 
   function handlePlayerClick(playerId: string) {
@@ -79,24 +99,23 @@ export default function LandingPage() {
     setStep("pin");
   }
 
-  async function handlePinSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!game || !selectedPlayer || !pin.trim()) return;
+  const verifyPin = useCallback(async (pinValue: string) => {
+    if (!game || !selectedPlayer || pinValue.length !== 4) return;
 
     setLoading(true);
     setError("");
 
     try {
-      // Verify PIN against players table
       const { data: player, error: pinError } = await supabase
         .from("players")
         .select("*")
         .eq("id", selectedPlayer)
-        .eq("pin", pin.trim())
+        .eq("pin", pinValue)
         .single();
 
       if (pinError || !player) {
         setError("Wrong PIN. Try again.");
+        setPin("");
         setLoading(false);
         return;
       }
@@ -115,6 +134,11 @@ export default function LandingPage() {
     } finally {
       setLoading(false);
     }
+  }, [game, selectedPlayer, router]);
+
+  function handlePinSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    verifyPin(pin);
   }
 
   async function handleCreateGame(e: React.FormEvent) {
@@ -252,16 +276,12 @@ export default function LandingPage() {
                 autoFocus
               />
             </div>
+            {loading && (
+              <p className="text-sm text-muted-foreground text-center animate-pulse">Looking up game...</p>
+            )}
             {error && (
               <p className="text-destructive text-sm text-center">{error}</p>
             )}
-            <button
-              type="submit"
-              disabled={!gameCode.trim() || loading}
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg px-4 py-3 font-medium transition-colors disabled:opacity-50"
-            >
-              {loading ? "Looking up..." : "Join Game"}
-            </button>
             <button
               type="button"
               onClick={() => { setStep("create"); setError(""); }}
@@ -463,22 +483,22 @@ export default function LandingPage() {
                 pattern="[0-9]*"
                 maxLength={4}
                 value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, "").slice(0, 4);
+                  setPin(val);
+                  if (val.length === 4) verifyPin(val);
+                }}
                 placeholder="****"
                 className="w-full bg-input border border-border rounded-lg px-4 py-3 text-center text-2xl tracking-[0.5em] placeholder:tracking-[0.5em] focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
                 autoFocus
               />
             </div>
+            {loading && (
+              <p className="text-sm text-muted-foreground text-center animate-pulse">Verifying...</p>
+            )}
             {error && (
               <p className="text-destructive text-sm text-center">{error}</p>
             )}
-            <button
-              type="submit"
-              disabled={pin.length !== 4 || loading}
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg px-4 py-3 font-medium transition-colors disabled:opacity-50"
-            >
-              {loading ? "Verifying..." : "Enter Game"}
-            </button>
             <button
               type="button"
               onClick={() => {
