@@ -11,6 +11,7 @@ import { cn } from "~/lib/utils";
 import { ArrowLeft, Play, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X, Users, Copy, Check, Link2, Share2, Lock, DollarSign, Download, Image } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { setSession } from "~/hooks/use-game";
+import { TeamCombobox } from "~/components/TeamCombobox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/ui/tooltip";
 import {
   AlertDialog,
@@ -420,6 +421,12 @@ function AdminView({ gameId }: { gameId: string }) {
       setEditingTeam(null);
       return;
     }
+    // Prevent same team for both row and col
+    const otherTeam = editingTeam === "row" ? game!.team_col : game!.team_row;
+    if (name.toLowerCase() === otherTeam.toLowerCase()) {
+      setTeamNameError("Must be different from the other team");
+      return;
+    }
 
     setLoading("team-name");
     setTeamNameError("");
@@ -795,13 +802,11 @@ function AdminView({ gameId }: { gameId: string }) {
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground w-20">Team Row</span>
-                <input
-                  type="text"
+                <TeamCombobox
                   value={teamNameInput}
-                  onChange={(e) => setTeamNameInput(e.target.value.slice(0, 30))}
-                  className="flex-1 bg-input border border-border rounded px-3 py-1.5 text-sm"
-                  maxLength={30}
-                  autoFocus
+                  onChange={(v) => setTeamNameInput(v.slice(0, 30))}
+                  placeholder="e.g. Chiefs"
+                  className="flex-1"
                 />
                 <button
                   onClick={saveTeamName}
@@ -842,13 +847,11 @@ function AdminView({ gameId }: { gameId: string }) {
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground w-20">Team Col</span>
-                <input
-                  type="text"
+                <TeamCombobox
                   value={teamNameInput}
-                  onChange={(e) => setTeamNameInput(e.target.value.slice(0, 30))}
-                  className="flex-1 bg-input border border-border rounded px-3 py-1.5 text-sm"
-                  maxLength={30}
-                  autoFocus
+                  onChange={(v) => setTeamNameInput(v.slice(0, 30))}
+                  placeholder="e.g. Eagles"
+                  className="flex-1"
                 />
                 <button
                   onClick={saveTeamName}

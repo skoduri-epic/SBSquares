@@ -9,6 +9,7 @@ import { MAX_GAMES } from "~/lib/constants";
 import { PLAYER_COLORS } from "~/lib/types";
 import { Lock } from "lucide-react";
 import Link from "next/link";
+import { TeamCombobox } from "~/components/TeamCombobox";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -163,6 +164,10 @@ export default function LandingPage() {
     }
     if (!/^\d{4}$/.test(playerPin)) {
       setError("PIN must be exactly 4 digits");
+      return;
+    }
+    if (teamRow.toLowerCase() === teamCol.toLowerCase()) {
+      setError("Teams must be different");
       return;
     }
 
@@ -337,22 +342,18 @@ export default function LandingPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium mb-1 text-muted-foreground">Team (Row)</label>
-                <input
-                  type="text"
+                <TeamCombobox
                   value={createForm.teamRow}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, teamRow: e.target.value }))}
+                  onChange={(v) => setCreateForm((f) => ({ ...f, teamRow: v }))}
                   placeholder="e.g. Chiefs"
-                  className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm"
                 />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1 text-muted-foreground">Team (Col)</label>
-                <input
-                  type="text"
+                <TeamCombobox
                   value={createForm.teamCol}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, teamCol: e.target.value }))}
+                  onChange={(v) => setCreateForm((f) => ({ ...f, teamCol: v }))}
                   placeholder="e.g. Eagles"
-                  className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm"
                 />
               </div>
             </div>
