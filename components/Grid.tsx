@@ -68,8 +68,8 @@ export function Grid({ onPickSquare, isMyTurn = false, activeQuarterScores = [] 
   const gap = "gap-[2px] sm:gap-1";
 
   return (
-    <div className="overflow-x-auto p-1">
-      <div className="inline-flex flex-col">
+    <div className="overflow-x-auto">
+      <div className="inline-flex flex-col p-6">
         {/* Main grid area: Seahawks label + (column headers + grid rows) */}
         <div className="flex">
           {/* Row team label (vertical) */}
