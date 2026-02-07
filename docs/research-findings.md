@@ -112,6 +112,40 @@ For a Super Bowl pool app, this is actually fine since:
 
 ---
 
+## 2a. Live Score Polling - Free Tier Impact Analysis
+
+### Polling Setup
+
+- 1 admin client polls `/api/live-scores` every 30s (adaptive: 60s during pregame/halftime)
+- Super Bowl duration: ~5 hours total polling window, ~340 polls per admin
+- Each poll: 1 ESPN fetch + 5 Supabase reads + 0-4 writes (only when scores change)
+- Only ~9 actual DB writes during the entire game (4 quarters x delete+insert + 1 game status update)
+- Realtime: ~117 messages total (9 changes x ~13 connected clients)
+
+### Resource Usage
+
+| Resource | Super Bowl Usage | Monthly Limit | % Used |
+|----------|-----------------|---------------|--------|
+| Vercel invocations | ~340 | 100,000 | 0.34% |
+| Vercel execution | ~0.094 GB-hrs | 100 GB-hrs | 0.0001% |
+| Supabase API calls | ~2,200 | Unlimited | N/A |
+| Supabase realtime msgs | ~117 | 2,000,000 | 0.006% |
+| Supabase bandwidth | ~6.8 MB | 5 GB | 0.14% |
+| Vercel bandwidth | ~6.8 MB | 100 GB | 0.007% |
+
+### Verdict
+
+30s polling is safe, no changes needed. Under 1% of all limits. Adaptive intervals already optimized. Even with 5 simultaneous games, stays under 2%.
+
+### Additional Notes
+
+- ESPN has no official rate limits documented. ~340 requests over 5 hours (~68/hr) is well within community-observed safe thresholds.
+- Only 1 server-side source polls ESPN regardless of connected user count.
+- The ESPN scoreboard endpoint (`site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard`) is a public, unauthenticated API that has been stable for years.
+- Adaptive polling reduces unnecessary requests: 60s during pregame/halftime, 30s during active play, polling stops entirely when game reaches "post" state.
+
+---
+
 ## 3. Super-Admin Screen Assessment (Task #90)
 
 **Recommendation: Not needed now.** Build it when you have 10+ games.

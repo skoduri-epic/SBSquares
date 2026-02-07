@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useRef } from "react";
+import { use, useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { GameProvider, useGameContext } from "~/components/GameProvider";
 import { supabase } from "~/lib/supabase";
@@ -8,9 +8,10 @@ import { generateDraftOrder, generateDigitPermutation, calculateQuarterResult, p
 import type { Quarter } from "~/lib/types";
 import { PLAYER_COLORS } from "~/lib/types";
 import { cn } from "~/lib/utils";
-import { ArrowLeft, Play, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X, Users, Copy, Check, Link2, Share2, Lock, DollarSign, Download, Image } from "lucide-react";
+import { ArrowLeft, Play, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X, Users, Copy, Check, Link2, Share2, Lock, DollarSign, Download, Image, Zap } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { setSession } from "~/hooks/use-game";
+import { useLiveScores } from "~/hooks/use-live-scores";
 import { TeamCombobox } from "~/components/TeamCombobox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/ui/tooltip";
 import {
@@ -1814,6 +1815,9 @@ function ScoreEntry({ gameId }: { gameId: string }) {
   const { game, scores, players, squares, digitAssignments, reload } = useGameContext();
   const [loading, setLoading] = useState<string | null>(null);
   const [editingQuarter, setEditingQuarter] = useState<Quarter | null>(null);
+  const [toggling, setToggling] = useState(false);
+  const [detectError, setDetectError] = useState<string | null>(null);
+  const [detectedMatch, setDetectedMatch] = useState<string | null>(null);
   const [scoreInputs, setScoreInputs] = useState<
     Record<string, { row: string; col: string }>
   >({
@@ -1823,7 +1827,74 @@ function ScoreEntry({ gameId }: { gameId: string }) {
     Q4: { row: "", col: "" },
   });
 
+  const { isPolling, lastPollAt, error: pollError, nflStatus, statusDetail } = useLiveScores(
+    gameId,
+    game?.auto_scores_enabled ?? false,
+    game?.status ?? "setup"
+  );
+
+  // "Last checked X seconds ago" timer
+  const [secondsAgo, setSecondsAgo] = useState<number | null>(null);
+  useEffect(() => {
+    if (!lastPollAt) {
+      setSecondsAgo(null);
+      return;
+    }
+    const update = () => setSecondsAgo(Math.floor((Date.now() - lastPollAt.getTime()) / 1000));
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, [lastPollAt]);
+
   if (!game) return null;
+
+  const autoEnabled = game.auto_scores_enabled ?? false;
+  const showAutoToggle = game.status === "live" || game.status === "locked";
+
+  async function toggleAutoScores() {
+    if (!game) return;
+    setToggling(true);
+    setDetectError(null);
+    setDetectedMatch(null);
+    try {
+      const newValue = !game.auto_scores_enabled;
+
+      if (newValue && !game.espn_event_id) {
+        // Auto-detect ESPN event via detect endpoint
+        const detectRes = await fetch("/api/live-scores/detect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ teamRow: game.team_row, teamCol: game.team_col }),
+        });
+        const detectData = await detectRes.json();
+
+        if (!detectData.success) {
+          setDetectError(detectData.error || "Could not auto-detect the ESPN game.");
+          return;
+        }
+
+        setDetectedMatch(`${detectData.homeTeam} vs ${detectData.awayTeam}`);
+        await supabase
+          .from("games")
+          .update({ auto_scores_enabled: true, espn_event_id: detectData.eventId })
+          .eq("id", game.id);
+      } else {
+        // Toggling off, or event ID already set
+        await supabase
+          .from("games")
+          .update({ auto_scores_enabled: newValue })
+          .eq("id", game.id);
+        if (!newValue) setDetectedMatch(null);
+      }
+
+      reload();
+    } catch (err) {
+      console.error("Toggle auto-scores failed:", err);
+      setDetectError(err instanceof Error ? err.message : "Failed to toggle auto-scores");
+    } finally {
+      setToggling(false);
+    }
+  }
 
   const existingQuarters = new Set(scores.map((s) => s.quarter));
   const quarters: Quarter[] = ["Q1", "Q2", "Q3", "Q4"];
@@ -1913,6 +1984,119 @@ function ScoreEntry({ gameId }: { gameId: string }) {
         <Trophy className="w-5 h-5 text-winner" />
         Score Entry
       </h2>
+
+      {/* Auto-update toggle (only visible when game is live or locked) */}
+      {showAutoToggle && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium flex items-center gap-2">
+              <Zap className="w-4 h-4 text-yellow-400" />
+              Auto-update from ESPN
+            </label>
+            <button
+              onClick={toggleAutoScores}
+              disabled={toggling}
+              className={cn(
+                "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                autoEnabled ? "bg-green-500" : "bg-border"
+              )}
+            >
+              <span
+                className={cn(
+                  "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                  autoEnabled ? "translate-x-6" : "translate-x-1"
+                )}
+              />
+            </button>
+          </div>
+
+          {/* Detected match confirmation */}
+          {detectedMatch && autoEnabled && (
+            <p className="text-[11px] text-green-400">
+              Detected: {detectedMatch}
+            </p>
+          )}
+
+          {/* Detection error */}
+          {detectError && !autoEnabled && (
+            <p className="text-[11px] text-red-400">
+              {detectError}
+            </p>
+          )}
+
+          {/* Status indicator when auto is enabled */}
+          {autoEnabled && (
+            <div className="bg-background/50 border border-border/60 rounded-lg px-3 py-2 space-y-1">
+              <div className="flex items-center gap-2 text-sm">
+                {nflStatus === "live" && (
+                  <>
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-400" />
+                    </span>
+                    <span className="text-green-400">Live - updating every 30s</span>
+                    {statusDetail && (
+                      <span className="text-muted-foreground ml-auto text-xs">{statusDetail}</span>
+                    )}
+                  </>
+                )}
+                {nflStatus === "pregame" && (
+                  <>
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-yellow-400" />
+                    </span>
+                    <span className="text-yellow-400">Waiting for kickoff...</span>
+                  </>
+                )}
+                {nflStatus === "halftime" && (
+                  <>
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-orange-400" />
+                    </span>
+                    <span className="text-orange-400">Halftime</span>
+                  </>
+                )}
+                {nflStatus === "final" && (
+                  <>
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-muted-foreground" />
+                    </span>
+                    <span className="text-muted-foreground">Game Final - scores locked</span>
+                  </>
+                )}
+                {!nflStatus && isPolling && (
+                  <>
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-400" />
+                    </span>
+                    <span className="text-blue-400">Connecting...</span>
+                  </>
+                )}
+              </div>
+
+              {secondsAgo !== null && (
+                <p className="text-[11px] text-muted-foreground">
+                  Last checked: {secondsAgo < 5 ? "just now" : `${secondsAgo}s ago`}
+                </p>
+              )}
+
+              {pollError && (
+                <p className="text-[11px] text-red-400">
+                  Error: {pollError}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Message when auto is enabled */}
+          {autoEnabled && (
+            <p className="text-[11px] text-muted-foreground">
+              Scores update automatically from ESPN
+            </p>
+          )}
+        </div>
+      )}
 
       {quarters.map((q) => {
         const existing = scores.find((s) => s.quarter === q);
@@ -2034,7 +2218,7 @@ function ScoreEntry({ gameId }: { gameId: string }) {
           );
         }
 
-        const disabled = existingQuarters.size < quarters.indexOf(q);
+        const disabled = autoEnabled || existingQuarters.size < quarters.indexOf(q);
         return (
           <div key={q} className="space-y-2">
             <div className="flex items-center gap-2">

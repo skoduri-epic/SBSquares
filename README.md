@@ -72,7 +72,8 @@ A full-stack Super Bowl Squares pool app for 10 friends to play the classic foot
   ✓ Animated digit reveals             price, prize split)
   ✓ Winner/runner-up highlights    ✓ QR code invites (copy + save)
   ✓ Progress bar scoreboard        ✓ Score entry per quarter
-  ✓ Help page                      ✓ Invite toggle
+  ✓ Help page                      ✓ Auto-update scores from ESPN
+                                   ✓ Invite toggle
 
   SUPERADMIN (/superadmin)         INFRASTRUCTURE
   ────────────────────────         ──────────────
@@ -207,6 +208,164 @@ Claude Code's agent team system let us parallelize development across specialize
 - Verified: cascade delete, limit enforcement, recovery
 - 9 tasks — all completed
 
+**Session 5: Live Score Auto-Update -- Agent Team Success Story**
+
+The night before Super Bowl LX, the user gave one instruction:
+
+```
+  "Add automatic live score updates. Here's a GitHub gist with
+   ESPN API endpoints. Use the researcher to find the API, the
+   architect for the plan, and the dev to build it."
+```
+
+What happened next required almost zero human involvement:
+
+```
+  MINUTE 0    User sends the request
+              |
+              v
+  MINUTE 1    Team Lead (team-lead-2) reads the codebase,
+              creates 7 tasks with dependencies, and dispatches:
+              |
+              |---> Product Researcher: "Find a free NFL score API"
+              |---> Architect: "Design the feature architecture"
+              +---> UI Dev: "Stand by -- you'll implement once
+                           the plan is ready"
+              |
+              v
+  MINUTE 3    Researcher reports back:
+              * ESPN scoreboard API -- free, no auth, no rate limits
+              * SB LX event ID: 401772988 (Seahawks vs Patriots)
+              * Linescores are per-quarter deltas, need cumulative
+                mapping for our app
+              * Recommends 30s adaptive polling
+              |
+              v
+  MINUTE 5    Architect delivers full plan:
+              * 6 files, data flow diagram, sequence diagram
+              * Edge cases: overtime, mid-quarter, halftime,
+                multi-admin, ESPN down
+              * Chose "espn_event_id" over "nfl_event_id"
+                (source-explicit naming)
+              * Client-driven polling (no server cron -- works
+                on Vercel free tier)
+              |
+              v
+  MINUTE 6    Team Lead reviews plan, approves with 3 notes:
+              * OT folds into Q4 (confirmed)
+              * Add auto-detect Super Bowl helper
+              * Match team.name for fuzzy matching
+              |
+              Team Lead sends researcher's findings to architect
+              with 6 specific follow-up questions
+              |
+              v
+  MINUTE 8    Researcher returns verified data:
+              * Tested with actual SB LIX and OT game responses
+              * Confirmed linescore structure: {value, displayValue,
+                period}
+              * Found that ?event= param works on scoreboard
+              * Verified OT appears as linescores[4] with period: 5
+              |
+              v
+  MINUTE 9    Team Lead merges research into plan, sends full
+              implementation brief to UI Dev with:
+              * Exact TypeScript interfaces
+              * ESPN response field mappings
+              * Code structure for each of 4 implementation tasks
+              |
+              v
+  MINUTES     Implementation proceeds -- architect and UI Dev
+  10-25       build in parallel:
+              |
+              |-- DB migration (2 new columns)
+              |-- ESPN client (fetch, parse, cumulative mapping,
+              |   team matching, OT handling, auto-detect)
+              |-- API route (validate, fetch ESPN, calculate
+              |   winners, upsert scores, complete game)
+              |-- Polling hook (adaptive 30s/60s, auto-stop)
+              +-- Admin UI toggle (status dots, disable manual
+                  inputs, "last checked" timer)
+              |
+              v
+  MINUTE 12   Team Lead catches a bug during code review:
+              matchTeamToAxis() called with 4 args instead of 5
+              (missing displayName param). Reports to architect
+              with the exact fix. Fixed immediately.
+              |
+              v
+  MINUTE 20   Architect adds bonus: /api/live-scores/detect
+              endpoint for auto-detecting the Super Bowl game.
+              UI Dev integrates it into the toggle flow.
+              |
+              v
+  MINUTE 25   All code complete. Build passes. Team Lead
+              requests free tier safety analysis.
+              |
+              v
+  MINUTE 27   Architect analyzes: 30s polling = 340 requests
+              over 5 hours. Uses <1% of every free tier limit
+              (Vercel + Supabase). No changes needed.
+              |
+              v
+  MINUTE 30   User tests locally. Toggle stuck on "Connecting"
+              -- Team Lead diagnoses: migration not applied to
+              local DB. Applies it. Discovers ESPN ?event= param
+              doesn't work for historical games. Implements
+              summary endpoint fallback.
+              |
+              v
+  MINUTE 35   Full pipeline test with SB LIX data:
+              ESPN fetch -> cumulative mapping -> winner calc ->
+              Supabase upsert -> Realtime broadcast -> UI update
+              ALL FOUR QUARTERS populated live. No page refresh.
+              |
+              v
+              User: "i saw it update live not needed to refresh"
+
+  -----------------------------------------------------------
+  RESULT: 7 tasks, 5 new files, ~900 lines of code
+          1 bug caught in review, 1 bug caught in testing
+          Production-ready in ~35 minutes
+          Human involvement: 1 initial instruction +
+                             2 clarifying answers
+  -----------------------------------------------------------
+```
+
+**What made this work:**
+
+```
+  1. SPECIALIZATION
+     Each agent had a clear role. The researcher didn't
+     write code. The architect didn't build UI. The dev
+     didn't do research. This prevented conflicts and
+     let each agent go deep in their domain.
+
+  2. DEPENDENCY-DRIVEN PIPELINE
+     Tasks had explicit blockers (Task #8 blocked by #5,
+     #6, #7). The team lead enforced execution order
+     while allowing parallel work where possible.
+
+  3. INTER-AGENT REVIEW
+     The team lead reviewed every deliverable before
+     passing it downstream. Caught the matchTeamToAxis
+     bug before it reached production. The architect
+     independently verified the UI dev's work.
+
+  4. GRACEFUL DEBUGGING
+     When the user hit "Connecting..." the team lead
+     didn't guess -- diagnosed the root cause (missing
+     DB columns), fixed it, then found a second issue
+     (ESPN API quirk with historical events) and added
+     a fallback. Systematic, not reactive.
+
+  5. MINIMAL HUMAN OVERHEAD
+     The user gave 1 instruction and answered 2 questions.
+     Everything else -- task breakdown, research, design,
+     implementation, review, testing, documentation --
+     was agent-to-agent coordination.
+```
+
 ---
 
 ## Key Decisions & Lessons
@@ -220,6 +379,8 @@ Claude Code's agent team system let us parallelize development across specialize
 4. **Agent teams for speed** — Parallelizing across architect, ui-dev, and backend-dev meant features were designed, built, reviewed, and tested in the same session. The UAT tester caught bugs that humans would have missed.
 
 5. **Delegate mode gotcha** — In Claude Code's delegate mode, the orchestrator can only coordinate (create tasks, send messages). All file operations must go through teammates. Learned to plan around this constraint.
+
+6. **ESPN public API over paid alternatives** — The undocumented ESPN scoreboard API provides exactly what we need (quarter linescores, game status) with no API key, no rate limits, and <50KB responses. Server-side polling from 1 admin client means ESPN sees ~340 requests over the entire Super Bowl — negligible load.
 
 ---
 

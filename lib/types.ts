@@ -16,6 +16,8 @@ export interface Game {
   prize_split: Record<string, number>;
   winner_pct: number;
   invite_enabled: boolean;
+  auto_scores_enabled: boolean;
+  espn_event_id: string | null;
   created_at: string;
 }
 
