@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 
-type Theme = "dark" | "light";
+type Theme = "dark" | "light" | "system";
+type EffectiveTheme = "dark" | "light";
 
 const THEME_KEY = "sb-theme";
 const TEAM_KEY = "sb-team";
@@ -622,7 +623,17 @@ const TEAM_COLORS: Record<string, { dark: Record<string, string>; light: Record<
 
 function getStoredTheme(): Theme {
   if (typeof window === "undefined") return "dark";
-  return (localStorage.getItem(THEME_KEY) as Theme) ?? "dark";
+  const stored = localStorage.getItem(THEME_KEY);
+  if (stored === "dark" || stored === "light" || stored === "system") return stored;
+  return "dark";
+}
+
+function resolveTheme(theme: Theme): EffectiveTheme {
+  if (theme === "system") {
+    if (typeof window === "undefined") return "dark";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  return theme;
 }
 
 function getStoredTeam(): string {
@@ -630,7 +641,7 @@ function getStoredTeam(): string {
   return localStorage.getItem(TEAM_KEY) ?? "neutral";
 }
 
-function applyTeamColors(teamName: string, theme: Theme) {
+function applyTeamColors(teamName: string, effective: EffectiveTheme) {
   const root = document.documentElement;
   // Clear any existing team overrides
   root.removeAttribute("style");
@@ -640,7 +651,7 @@ function applyTeamColors(teamName: string, theme: Theme) {
   const palette = TEAM_COLORS[teamName];
   if (!palette) return;
 
-  const vars = theme === "dark" ? palette.dark : palette.light;
+  const vars = effective === "dark" ? palette.dark : palette.light;
   for (const [prop, value] of Object.entries(vars)) {
     root.style.setProperty(prop, value);
   }
@@ -652,37 +663,57 @@ export function getTeamSwatch(teamName: string): string | null {
 
 export function useTheme() {
   const [theme, setThemeState] = useState<Theme>(getStoredTheme);
+  const [resolvedTheme, setResolvedTheme] = useState<EffectiveTheme>(() => resolveTheme(getStoredTheme()));
   const [team, setTeamState] = useState<string>(getStoredTeam);
 
+  // Apply effective theme to DOM
+  const applyEffective = useCallback((effective: EffectiveTheme) => {
+    document.documentElement.classList.toggle("dark", effective === "dark");
+    const currentTeam = localStorage.getItem(TEAM_KEY) ?? "neutral";
+    applyTeamColors(currentTeam, effective);
+  }, []);
+
+  // Initialize from localStorage
   useEffect(() => {
     const storedTheme = getStoredTheme();
     const storedTeam = getStoredTeam();
+    const effective = resolveTheme(storedTheme);
     setThemeState(storedTheme);
     setTeamState(storedTeam);
-    document.documentElement.classList.toggle("dark", storedTheme === "dark");
-    applyTeamColors(storedTeam, storedTheme);
+    setResolvedTheme(effective);
+    document.documentElement.classList.toggle("dark", effective === "dark");
+    applyTeamColors(storedTeam, effective);
   }, []);
+
+  // Listen for OS theme changes when preference is "system"
+  useEffect(() => {
+    if (theme !== "system") return;
+
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e: MediaQueryListEvent) => {
+      const effective: EffectiveTheme = e.matches ? "dark" : "light";
+      setResolvedTheme(effective);
+      applyEffective(effective);
+    };
+
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, [theme, applyEffective]);
 
   const setTheme = useCallback((t: Theme) => {
     setThemeState(t);
     localStorage.setItem(THEME_KEY, t);
-    document.documentElement.classList.toggle("dark", t === "dark");
-    const currentTeam = localStorage.getItem(TEAM_KEY) ?? "neutral";
-    applyTeamColors(currentTeam, t);
-  }, []);
-
-  const toggleTheme = useCallback(() => {
-    const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-  }, [theme, setTheme]);
+    const effective = resolveTheme(t);
+    setResolvedTheme(effective);
+    applyEffective(effective);
+  }, [applyEffective]);
 
   const setTeam = useCallback((teamName: string) => {
     const next = team === teamName ? "neutral" : teamName;
     setTeamState(next);
     localStorage.setItem(TEAM_KEY, next);
-    const currentTheme = (localStorage.getItem(THEME_KEY) as Theme) ?? "dark";
-    applyTeamColors(next, currentTheme);
-  }, [team]);
+    applyTeamColors(next, resolvedTheme);
+  }, [team, resolvedTheme]);
 
-  return { theme, setTheme, toggleTheme, team, setTeam };
+  return { theme, resolvedTheme, setTheme, team, setTeam };
 }

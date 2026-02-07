@@ -3,7 +3,7 @@
 import { use, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "~/lib/supabase";
-import { setSession } from "~/hooks/use-game";
+import { getSession, setSession } from "~/hooks/use-game";
 import type { Game, Player } from "~/lib/types";
 import { PLAYER_COLORS } from "~/lib/types";
 import { ArrowLeft, Users, Lock, AlertTriangle } from "lucide-react";
@@ -28,6 +28,13 @@ export default function JoinPage({
 
   useEffect(() => {
     async function loadGame() {
+      // If user already has a session for this game, go straight to game view
+      const session = getSession();
+      if (session && session.gameCode?.toUpperCase() === gameCode.toUpperCase()) {
+        router.push(`/game/${session.gameId}`);
+        return;
+      }
+
       const { data: gameData, error: gameErr } = await supabase
         .from("games")
         .select("*")
@@ -46,19 +53,10 @@ export default function JoinPage({
         invite_enabled: (gameData as Game).invite_enabled ?? true,
       };
 
-      if (!g.invite_enabled) {
-        setErrorMessage("This game is not accepting new players.");
-        setStatus("error");
-        return;
-      }
-
-      if (g.status !== "setup") {
-        setErrorMessage(
-          g.status === "batch1" || g.status === "batch2"
-            ? "This game's draft has already started. Contact the game admin to be added."
-            : "This game is no longer accepting new players."
-        );
-        setStatus("error");
+      if (!g.invite_enabled || g.status !== "setup") {
+        // Game exists but isn't accepting new players — redirect to landing
+        // page with pre-filled code so user can sign in as existing player
+        router.push(`/?code=${gameCode.toUpperCase()}`);
         return;
       }
 
@@ -71,8 +69,8 @@ export default function JoinPage({
       const pList = (playerData ?? []) as Player[];
 
       if (pList.length >= g.max_players) {
-        setErrorMessage(`This game has reached its player limit (${pList.length}/${g.max_players}).`);
-        setStatus("error");
+        // Game full — redirect to landing page for sign-in as existing player
+        router.push(`/?code=${gameCode.toUpperCase()}`);
         return;
       }
 
@@ -82,7 +80,7 @@ export default function JoinPage({
     }
 
     loadGame();
-  }, [gameCode]);
+  }, [gameCode, router]);
 
   function getNextColor(): string {
     const usedColors = new Set(players.map((p) => p.color));
@@ -162,6 +160,9 @@ export default function JoinPage({
         playerName: newPlayer.name,
         isAdmin: false,
       });
+
+      // Flag for the game page to show a "remember your game code" toast on mount
+      localStorage.setItem("sb-squares-show-code-toast", game.game_code);
 
       router.push(`/game/${game.id}`);
     } catch {

@@ -14,6 +14,7 @@ interface GridCellProps {
   isMine: boolean;
   isWinner: boolean;
   isRunnerUp: boolean;
+  isDark: boolean;
   winnerQuarters?: string[];
   runnerUpQuarters?: string[];
   onPick?: () => void;
@@ -27,6 +28,7 @@ export function GridCell({
   isMine,
   isWinner,
   isRunnerUp,
+  isDark,
   winnerQuarters,
   runnerUpQuarters,
   onPick,
@@ -52,7 +54,7 @@ export function GridCell({
         // Pickable
         canPick && "border-2 border-dashed border-primary/60 bg-primary/10 cursor-pointer cell-available hover:bg-primary/20 hover:border-primary hover:shadow-lg hover:-translate-y-1",
         // Claimed - mine (thicker border, higher opacity)
-        player && isMine && "border-2",
+        player && isMine && "border-[3px]",
         // Claimed - others
         player && !isMine && "border border-transparent",
         // Winner
@@ -63,8 +65,11 @@ export function GridCell({
       style={
         player
           ? {
-              backgroundColor: player.color + (isMine ? "40" : "25"),
-              borderColor: player.color + (isMine ? "90" : "60"),
+              backgroundColor: player.color + (isMine ? (isDark ? "70" : "30") : (isDark ? "35" : "20")),
+              borderColor: isMine && isDark ? player.color : player.color + (isMine ? "80" : (isDark ? "60" : "50")),
+              ...(isMine && isDark && !isWinner && !isRunnerUp
+                ? { boxShadow: `0 0 6px ${player.color}50, inset 0 0 4px ${player.color}20` }
+                : {}),
             }
           : undefined
       }

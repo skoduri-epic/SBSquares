@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, useEffect, useCallback, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "~/lib/supabase";
 import { setSession, getSession } from "~/hooks/use-game";
 import type { Game, Player } from "~/lib/types";
@@ -12,7 +12,16 @@ import Link from "next/link";
 import { TeamCombobox } from "~/components/TeamCombobox";
 
 export default function LandingPage() {
+  return (
+    <Suspense>
+      <LandingContent />
+    </Suspense>
+  );
+}
+
+function LandingContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [gameCode, setGameCode] = useState("");
   const [players, setPlayers] = useState<Player[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState("");
@@ -75,6 +84,15 @@ export default function LandingPage() {
       setLoading(false);
     }
   }, []);
+
+  // Auto-fill and lookup when redirected from /join with ?code= param
+  useEffect(() => {
+    const code = searchParams.get("code");
+    if (code && code.trim().length >= 3) {
+      setGameCode(code.toUpperCase());
+      lookupGame(code);
+    }
+  }, [searchParams, lookupGame]);
 
   // Auto-lookup game code after 600ms pause
   const codeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

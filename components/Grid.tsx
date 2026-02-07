@@ -6,6 +6,7 @@ import { TeamLogo } from "./TeamLogo";
 import { SlidingNumber } from "~/components/ui/sliding-number";
 import type { Score } from "~/lib/types";
 import { cn } from "~/lib/utils";
+import { useTheme } from "~/hooks/use-theme";
 
 interface GridProps {
   onPickSquare?: (row: number, col: number) => void;
@@ -15,6 +16,8 @@ interface GridProps {
 
 export function Grid({ onPickSquare, isMyTurn = false, activeQuarterScores = [] }: GridProps) {
   const { squares, players, digitAssignments, game, session } = useGameContext();
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
 
   const playerMap = new Map(players.map((p) => [p.id, p]));
 
@@ -167,6 +170,7 @@ export function Grid({ onPickSquare, isMyTurn = false, activeQuarterScores = [] 
                       isMine={sq.player_id === session?.playerId}
                       isWinner={winnerSquares.has(key)}
                       isRunnerUp={runnerUpSquares.has(key) && !winnerSquares.has(key)}
+                      isDark={isDark}
                       winnerQuarters={winnerSquares.get(key)}
                       runnerUpQuarters={runnerUpSquares.get(key)}
                       onPick={onPickSquare ? () => onPickSquare(r, c) : undefined}

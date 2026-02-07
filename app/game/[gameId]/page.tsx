@@ -10,8 +10,9 @@ import { QuarterResults } from "~/components/QuarterResults";
 import { PlayerLegend } from "~/components/PlayerLegend";
 import { supabase } from "~/lib/supabase";
 import { clearSession } from "~/hooks/use-game";
-import { Settings, LogOut, Sun, Moon, HelpCircle, Info, Hash, Clock, DollarSign, AlertCircle } from "lucide-react";
+import { Settings, LogOut, Sun, Moon, Monitor, HelpCircle, Info, Hash, Clock, DollarSign, AlertCircle } from "lucide-react";
 import { useTheme, getTeamSwatch } from "~/hooks/use-theme";
+import { toast } from "~/hooks/use-toast";
 import { cn } from "~/lib/utils";
 import {
   Dialog,
@@ -42,7 +43,7 @@ function GameView({ gameId }: { gameId: string }) {
   const { game, session, scores, draftOrder, loading, error, reload } = useGameContext();
   const [isManualPicking, setIsManualPicking] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
-  const { theme, toggleTheme, team, setTeam } = useTheme();
+  const { theme, resolvedTheme, setTheme, team, setTeam } = useTheme();
 
   // Auto-show rules modal on first visit per game
   useEffect(() => {
@@ -52,6 +53,18 @@ function GameView({ gameId }: { gameId: string }) {
       localStorage.setItem(key, "1");
     }
   }, [gameId]);
+
+  // Show game code reminder toast for players who just joined via QR
+  useEffect(() => {
+    const code = localStorage.getItem("sb-squares-show-code-toast");
+    if (code) {
+      localStorage.removeItem("sb-squares-show-code-toast");
+      toast({
+        title: `Your game code is ${code}`,
+        description: "Save this code to sign in from other devices.",
+      });
+    }
+  }, []);
 
   const batch = game?.status === "batch1" ? 1 : game?.status === "batch2" ? 2 : null;
   const batchOrder = draftOrder.filter((d) => d.batch === batch);
@@ -139,13 +152,29 @@ function GameView({ gameId }: { gameId: string }) {
             </p>
           </div>
           <div className="flex gap-1">
-            <button
-              onClick={toggleTheme}
-              className="p-2 rounded-lg hover:bg-secondary transition-colors"
-              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            >
-              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
+            <div className="flex items-center bg-muted rounded-lg p-0.5" role="radiogroup" aria-label="Theme">
+              {([
+                { value: "light" as const, icon: Sun, label: "Light" },
+                { value: "system" as const, icon: Monitor, label: "System" },
+                { value: "dark" as const, icon: Moon, label: "Dark" },
+              ]).map(({ value, icon: Icon, label }) => (
+                <button
+                  key={value}
+                  role="radio"
+                  aria-checked={theme === value}
+                  aria-label={label}
+                  onClick={() => setTheme(value)}
+                  className={cn(
+                    "p-1.5 rounded-md transition-colors",
+                    theme === value
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                </button>
+              ))}
+            </div>
             <button
               onClick={() => setRulesOpen(true)}
               className="p-2 rounded-lg hover:bg-secondary transition-colors"
