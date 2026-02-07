@@ -101,6 +101,13 @@ function AdminView({ gameId }: { gameId: string }) {
   const isSingleBatch = draftConfig.batches === 1;
 
   async function startBatch(batchNum: 1 | 2) {
+    if (batchNum === 1 && players.length > safeGame.max_players) {
+      alert(
+        `Too many players: ${players.length} joined but max is ${safeGame.max_players}. ` +
+        `Remove ${players.length - safeGame.max_players} player(s) before starting the draft.`
+      );
+      return;
+    }
     if (batchNum === 1 && players.length < safeGame.max_players) {
       const confirmed = window.confirm(
         `Only ${players.length} of ${safeGame.max_players} players have joined. ` +
@@ -236,7 +243,7 @@ function AdminView({ gameId }: { gameId: string }) {
         .eq("game_id", game!.id);
       await supabase
         .from("games")
-        .update({ status: "setup" })
+        .update({ status: "setup", invite_enabled: true })
         .eq("id", game!.id);
       reload();
     } catch (err) {
@@ -423,6 +430,13 @@ function AdminView({ gameId }: { gameId: string }) {
   }
 
   async function saveMaxPlayers(value: number) {
+    if (value < players.length) {
+      const confirmed = window.confirm(
+        `There are currently ${players.length} players in the game, but you're setting max to ${value}. ` +
+        `You'll need to remove ${players.length - value} player(s) before starting the draft. Continue?`
+      );
+      if (!confirmed) return;
+    }
     setLoading("max-players");
     setConfigError("");
     try {
@@ -863,7 +877,7 @@ function AdminView({ gameId }: { gameId: string }) {
           {/* Max Players */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground w-20">Players</span>
-            {game.status === "setup" && players.length <= 1 ? (
+            {game.status === "setup" ? (
               <select
                 value={safeGame.max_players}
                 onChange={(e) => saveMaxPlayers(parseInt(e.target.value))}
