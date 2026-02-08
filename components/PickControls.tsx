@@ -1,21 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useGameContext } from "./GameProvider";
 import { supabase } from "~/lib/supabase";
 import { pickRandomSquares, getPlayerInitials, getDraftConfig } from "~/lib/game-logic";
 import { cn } from "~/lib/utils";
-import { Shuffle, MousePointer2, Check, Clock } from "lucide-react";
+import { Shuffle, MousePointer2, Check, Clock, Timer } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/ui/tooltip";
 
 interface PickControlsProps {
   onPickingStateChange?: (isManualPicking: boolean) => void;
+  isManualPicking?: boolean;
+  tentativeQueue?: string[];
+  onConfirm?: () => Promise<void>;
+  timerSecondsLeft?: number | null;
+  maxPicks?: number;
 }
 
-export function PickControls({ onPickingStateChange }: PickControlsProps) {
+export function PickControls({ onPickingStateChange, isManualPicking = false, tentativeQueue, onConfirm, timerSecondsLeft, maxPicks: maxPicksProp }: PickControlsProps) {
   const { game, session, draftOrder, squares, currentPlayer, players, reload } = useGameContext();
   const [mode, setMode] = useState<"choose" | "manual" | null>(null);
   const [loading, setLoading] = useState(false);
+  const randomPickRef = useRef(false);
+
+  // Sync internal mode with parent's isManualPicking prop
+  useEffect(() => {
+    if (isManualPicking) {
+      setMode("manual");
+    } else if (mode === "manual") {
+      setMode(null);
+    }
+  }, [isManualPicking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!game || !session || !currentPlayer) return null;
 
@@ -36,11 +51,6 @@ export function PickControls({ onPickingStateChange }: PickControlsProps) {
   const currentPicker = batchOrder.find((d) => d.picks_remaining > 0);
   const isMyTurn = currentPicker?.player_id === session.playerId;
   const picksRemaining = myDraft?.picks_remaining ?? 0;
-
-  // Derive picks used from actual squares data (count player's squares in current batch)
-  const picksUsed = squares.flat().filter(
-    (sq) => sq?.player_id === session.playerId && sq?.batch === batch
-  ).length;
 
   // Draft progress - compact horizontal icon row
   function DraftProgress() {
@@ -118,6 +128,8 @@ export function PickControls({ onPickingStateChange }: PickControlsProps) {
   }
 
   async function handleRandomPick() {
+    if (randomPickRef.current) return;
+    randomPickRef.current = true;
     setLoading(true);
     try {
       const picks = pickRandomSquares(squares, picksRemaining);
@@ -150,11 +162,11 @@ export function PickControls({ onPickingStateChange }: PickControlsProps) {
       console.error("Random pick failed:", err);
     } finally {
       setLoading(false);
+      randomPickRef.current = false;
     }
   }
 
   function handleManualMode() {
-    setMode("manual");
     onPickingStateChange?.(true);
   }
 
@@ -189,30 +201,85 @@ export function PickControls({ onPickingStateChange }: PickControlsProps) {
     );
   }
 
-  // Manual picking mode
+  // Manual picking mode — floating bottom bar
+  // Use maxPicks prop from parent (derived from getDraftConfig) for stable count
+  const totalPicks = maxPicksProp ?? picksRemaining;
+  const tentativeCount = tentativeQueue?.length ?? 0;
+  const allSlotsFilled = tentativeCount >= totalPicks;
+
+  // Format timer as m:ss
+  const formatTimer = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+
+  const isTimerLow = timerSecondsLeft !== null && timerSecondsLeft !== undefined && timerSecondsLeft <= 30;
+
+  async function handleConfirm() {
+    setLoading(true);
+    try {
+      await onConfirm?.();
+      setMode(null);
+      onPickingStateChange?.(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm">
-          Tap squares to pick:{" "}
-          <span className="font-bold text-accent">{picksUsed}</span> of{" "}
-          <span className="font-bold">{picksUsed + picksRemaining}</span>
-        </p>
+    <div className="fixed bottom-0 left-0 right-0 z-30 bg-card/95 backdrop-blur border-t border-border px-4 py-3">
+      <div className="max-w-4xl mx-auto flex items-center gap-3">
+        {/* Pick count */}
+        <span className={cn(
+          "text-lg font-bold tabular-nums flex-shrink-0",
+          allSlotsFilled ? "text-green-500" : "text-accent"
+        )}>
+          {tentativeCount}/{totalPicks}
+        </span>
+
+        {/* Dot indicators */}
+        <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto">
+          {Array.from({ length: totalPicks }, (_, i) => {
+            const isFilled = i < tentativeCount;
+            return (
+              <span
+                key={i}
+                className={cn(
+                  "w-2 h-2 rounded-full flex-shrink-0 transition-all duration-200",
+                  !isFilled && "border border-muted-foreground/40"
+                )}
+                style={isFilled ? { backgroundColor: currentPlayer.color } : undefined}
+              />
+            );
+          })}
+        </div>
+
+        {/* Timer */}
+        {timerSecondsLeft !== null && timerSecondsLeft !== undefined && (
+          <div className={cn(
+            "flex items-center gap-1 text-sm font-mono font-bold tabular-nums flex-shrink-0",
+            isTimerLow ? "text-red-400 animate-pulse" : "text-muted-foreground"
+          )}>
+            <Timer className="w-3.5 h-3.5" />
+            {formatTimer(timerSecondsLeft)}
+          </div>
+        )}
+
+        {/* Confirm button */}
         <button
-          onClick={() => {
-            setMode(null);
-            onPickingStateChange?.(false);
-          }}
-          className="text-xs text-muted-foreground hover:text-foreground"
+          onClick={handleConfirm}
+          disabled={loading || !allSlotsFilled}
+          className={cn(
+            "flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-all flex-shrink-0",
+            allSlotsFilled
+              ? "bg-green-600 hover:bg-green-700 text-white animate-pulse"
+              : "bg-muted text-muted-foreground cursor-not-allowed"
+          )}
         >
-          Cancel
+          <Check className="w-4 h-4" />
+          {loading ? "..." : "Confirm"}
         </button>
-      </div>
-      <div className="w-full bg-muted rounded-full h-2 mt-2">
-        <div
-          className="bg-accent h-2 rounded-full transition-all"
-          style={{ width: `${Math.min(((picksUsed / (picksUsed + picksRemaining)) || 0) * 100, 100)}%` }}
-        />
       </div>
     </div>
   );

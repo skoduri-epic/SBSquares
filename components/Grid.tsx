@@ -11,10 +11,11 @@ import { useTheme } from "~/hooks/use-theme";
 interface GridProps {
   onPickSquare?: (row: number, col: number) => void;
   isMyTurn?: boolean;
+  tentativeQueue?: string[];
   activeQuarterScores?: Score[];
 }
 
-export function Grid({ onPickSquare, isMyTurn = false, activeQuarterScores = [] }: GridProps) {
+export function Grid({ onPickSquare, isMyTurn = false, tentativeQueue = [], activeQuarterScores = [] }: GridProps) {
   const { squares, players, digitAssignments, game, session } = useGameContext();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -160,6 +161,8 @@ export function Grid({ onPickSquare, isMyTurn = false, activeQuarterScores = [] 
                   const player = sq.player_id ? playerMap.get(sq.player_id) ?? null : null;
                   const key = `${r}-${c}`;
 
+                  const tentIdx = tentativeQueue.indexOf(key);
+
                   return (
                     <GridCell
                       key={key}
@@ -168,6 +171,8 @@ export function Grid({ onPickSquare, isMyTurn = false, activeQuarterScores = [] 
                       isAvailable={!sq.player_id}
                       isMyTurn={isMyTurn}
                       isMine={sq.player_id === session?.playerId}
+                      isTentative={sq.is_tentative}
+                      tentativeIndex={tentIdx >= 0 ? tentIdx + 1 : null}
                       isWinner={winnerSquares.has(key)}
                       isRunnerUp={runnerUpSquares.has(key) && !winnerSquares.has(key)}
                       isDark={isDark}

@@ -27,6 +27,7 @@ function emptyGrid(): Square[][] {
       player_id: null,
       batch: null,
       picked_at: null,
+      is_tentative: false,
     }))
   );
 }

@@ -150,6 +150,7 @@ export async function POST(request: Request) {
         player_id: null,
         batch: null,
         picked_at: null,
+        is_tentative: false,
       }))
     );
     for (const sq of (squaresRes.data ?? []) as Square[]) {

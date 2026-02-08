@@ -8,7 +8,7 @@ import { generateDraftOrder, generateDigitPermutation, calculateQuarterResult, p
 import type { Quarter } from "~/lib/types";
 import { PLAYER_COLORS } from "~/lib/types";
 import { cn } from "~/lib/utils";
-import { ArrowLeft, Play, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X, Users, Copy, Check, Link2, Share2, Lock, DollarSign, Download, Image, Zap } from "lucide-react";
+import { ArrowLeft, Play, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X, Users, Copy, Check, Link2, Share2, Lock, DollarSign, Download, Image, Zap, ArrowRightLeft } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { setSession } from "~/hooks/use-game";
 import { useLiveScores } from "~/hooks/use-live-scores";
@@ -72,6 +72,9 @@ function AdminView({ gameId }: { gameId: string }) {
   const [priceInput, setPriceInput] = useState("");
   const [winnerPctInput, setWinnerPctInput] = useState("");
   const [splitInputs, setSplitInputs] = useState({ q1: "", q2: "", q3: "", q4: "" });
+  const [reassignMode, setReassignMode] = useState(false);
+  const [reassignSquare, setReassignSquare] = useState<{ row: number; col: number } | null>(null);
+  const [reassignTarget, setReassignTarget] = useState<string>("");
 
   if (gameLoading) {
     return (
@@ -166,6 +169,20 @@ function AdminView({ gameId }: { gameId: string }) {
 
     setLoading(`pick-${playerId}`);
     try {
+      // Clear any existing tentative picks for this player first
+      await supabase
+        .from("squares")
+        .update({ player_id: null, batch: null, is_tentative: false, picked_at: null })
+        .eq("game_id", game!.id)
+        .eq("player_id", playerId)
+        .eq("is_tentative", true);
+      await supabase
+        .from("draft_order")
+        .update({ tentative_started_at: null })
+        .eq("game_id", game!.id)
+        .eq("batch", batch)
+        .eq("player_id", playerId);
+
       const picks = pickRandomSquares(squares, draft.picks_remaining);
       for (const pick of picks) {
         await supabase
@@ -254,7 +271,7 @@ function AdminView({ gameId }: { gameId: string }) {
       await supabase.from("draft_order").delete().eq("game_id", game!.id);
       await supabase
         .from("squares")
-        .update({ player_id: null, batch: null, picked_at: null })
+        .update({ player_id: null, batch: null, picked_at: null, is_tentative: false })
         .eq("game_id", game!.id);
       await supabase
         .from("games")
@@ -273,7 +290,7 @@ function AdminView({ gameId }: { gameId: string }) {
     try {
       await supabase
         .from("squares")
-        .update({ player_id: null, batch: null, picked_at: null })
+        .update({ player_id: null, batch: null, picked_at: null, is_tentative: false })
         .eq("game_id", game!.id)
         .eq("player_id", playerId);
 
@@ -281,7 +298,7 @@ function AdminView({ gameId }: { gameId: string }) {
         const picksForBatch = batch === 1 ? draftConfig.batch1Picks : draftConfig.batch2Picks;
         await supabase
           .from("draft_order")
-          .update({ picks_remaining: picksForBatch })
+          .update({ picks_remaining: picksForBatch, tentative_started_at: null })
           .eq("game_id", game!.id)
           .eq("batch", batch)
           .eq("player_id", playerId);
@@ -290,6 +307,27 @@ function AdminView({ gameId }: { gameId: string }) {
       reload();
     } catch (err) {
       console.error("Clear picks failed:", err);
+    } finally {
+      setLoading("");
+    }
+  }
+
+  async function handleReassignSquare() {
+    if (!reassignSquare || !reassignTarget || !game) return;
+    setLoading("reassign");
+    try {
+      const { row, col } = reassignSquare;
+      await supabase
+        .from("squares")
+        .update({ player_id: reassignTarget || null })
+        .eq("game_id", game.id)
+        .eq("row_pos", row)
+        .eq("col_pos", col);
+      setReassignSquare(null);
+      setReassignTarget("");
+      reload();
+    } catch (err) {
+      console.error("Reassign failed:", err);
     } finally {
       setLoading("");
     }
@@ -1428,7 +1466,8 @@ function AdminView({ gameId }: { gameId: string }) {
                       const isActiveBatch = game.status === "batch1";
                       const isCurrent = isActiveBatch && d.player_id === currentPicker?.player_id;
                       const canPickFor = isActiveBatch && !isDone;
-                      const status = isDone ? "Done" : isCurrent ? "Picking..." : "Waiting";
+                      const hasTentative = d.tentative_started_at != null || squares.flat().some((sq) => sq.player_id === d.player_id && sq.is_tentative);
+                      const status = isDone ? "Done" : hasTentative ? "Selecting..." : isCurrent ? "Picking..." : "Waiting";
 
                       return (
                         <Tooltip key={d.player_id}>
@@ -1439,8 +1478,9 @@ function AdminView({ gameId }: { gameId: string }) {
                               className={cn(
                                 "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold transition-all flex-shrink-0",
                                 isDone && "opacity-60",
-                                isCurrent && "ring-2 ring-accent animate-pulse",
-                                !isDone && !isCurrent && "opacity-30",
+                                isCurrent && !hasTentative && "ring-2 ring-accent animate-pulse",
+                                hasTentative && "ring-2 ring-yellow-400 animate-pulse",
+                                !isDone && !isCurrent && !hasTentative && "opacity-30",
                                 canPickFor && "cursor-pointer hover:opacity-100 hover:scale-110",
                                 !canPickFor && "cursor-default",
                               )}
@@ -1471,7 +1511,8 @@ function AdminView({ gameId }: { gameId: string }) {
                       const isActiveBatch = game.status === "batch2";
                       const isCurrent = isActiveBatch && d.player_id === currentPicker?.player_id;
                       const canPickFor = isActiveBatch && !isDone;
-                      const status = isDone ? "Done" : isCurrent ? "Picking..." : "Waiting";
+                      const hasTentative = d.tentative_started_at != null || squares.flat().some((sq) => sq.player_id === d.player_id && sq.is_tentative);
+                      const status = isDone ? "Done" : hasTentative ? "Selecting..." : isCurrent ? "Picking..." : "Waiting";
 
                       return (
                         <Tooltip key={d.player_id}>
@@ -1482,8 +1523,9 @@ function AdminView({ gameId }: { gameId: string }) {
                               className={cn(
                                 "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold transition-all flex-shrink-0",
                                 isDone && "opacity-60",
-                                isCurrent && "ring-2 ring-accent animate-pulse",
-                                !isDone && !isCurrent && "opacity-30",
+                                isCurrent && !hasTentative && "ring-2 ring-accent animate-pulse",
+                                hasTentative && "ring-2 ring-yellow-400 animate-pulse",
+                                !isDone && !isCurrent && !hasTentative && "opacity-30",
                                 canPickFor && "cursor-pointer hover:opacity-100 hover:scale-110",
                                 !canPickFor && "cursor-default",
                               )}
@@ -1503,6 +1545,147 @@ function AdminView({ gameId }: { gameId: string }) {
                 </div>
               )}
             </TooltipProvider>
+          </section>
+        )}
+
+        {/* Square Management — Reassign Mode */}
+        {game.status !== "setup" && (
+          <section className="bg-card border border-border rounded-lg p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl tracking-wider">Square Management</h2>
+              <button
+                onClick={() => {
+                  setReassignMode(!reassignMode);
+                  setReassignSquare(null);
+                  setReassignTarget("");
+                }}
+                className={cn(
+                  "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors",
+                  reassignMode
+                    ? "bg-destructive text-destructive-foreground"
+                    : "bg-secondary hover:bg-secondary/80 text-secondary-foreground"
+                )}
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                {reassignMode ? "Exit Reassign" : "Reassign Mode"}
+              </button>
+            </div>
+
+            {reassignMode && (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Tap a claimed square to reassign it to a different player.
+                </p>
+
+                {/* Mini grid */}
+                <div className="overflow-x-auto">
+                  <div className="inline-grid grid-cols-10 gap-[2px]">
+                    {Array.from({ length: 10 }, (_, r) =>
+                      Array.from({ length: 10 }, (_, c) => {
+                        const sq = squares[r][c];
+                        const player = sq.player_id ? playerMap.get(sq.player_id) ?? null : null;
+                        const isSelected = reassignSquare?.row === r && reassignSquare?.col === c;
+
+                        return (
+                          <button
+                            key={`${r}-${c}`}
+                            onClick={() => {
+                              if (player) {
+                                setReassignSquare({ row: r, col: c });
+                                setReassignTarget("");
+                              }
+                            }}
+                            disabled={!player}
+                            className={cn(
+                              "w-7 h-7 sm:w-8 sm:h-8 rounded text-[8px] sm:text-[9px] font-bold transition-all flex items-center justify-center",
+                              !player && "bg-muted/20 border border-dashed border-border/30",
+                              player && "cursor-pointer hover:scale-110",
+                              isSelected && "ring-2 ring-accent scale-110",
+                            )}
+                            style={player ? {
+                              backgroundColor: player.color + "40",
+                              borderColor: player.color,
+                              borderWidth: "1px",
+                              borderStyle: "solid",
+                              color: player.color,
+                            } : undefined}
+                          >
+                            {player ? getPlayerInitials(player.name) : ""}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Reassign panel */}
+                {reassignSquare && (() => {
+                  const sq = squares[reassignSquare.row][reassignSquare.col];
+                  const currentOwner = sq.player_id ? playerMap.get(sq.player_id) ?? null : null;
+                  return (
+                    <div className="bg-secondary/30 rounded-lg p-3 space-y-3">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-muted-foreground">Square ({reassignSquare.row}, {reassignSquare.col})</span>
+                        <span className="text-muted-foreground">&rarr;</span>
+                        <span className="font-medium flex items-center gap-1.5">
+                          {currentOwner && (
+                            <span
+                              className="w-2.5 h-2.5 rounded-sm inline-block"
+                              style={{ backgroundColor: currentOwner.color }}
+                            />
+                          )}
+                          {currentOwner?.name ?? "Unassigned"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-muted-foreground whitespace-nowrap">Reassign to:</label>
+                        <select
+                          value={reassignTarget}
+                          onChange={(e) => setReassignTarget(e.target.value)}
+                          className="flex-1 bg-background border border-border rounded-md px-2 py-1.5 text-sm"
+                        >
+                          <option value="">Select player...</option>
+                          {players
+                            .filter((p) => p.id !== sq.player_id)
+                            .map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} ({squareCounts.get(p.id) ?? 0} squares)
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleReassignSquare}
+                          disabled={!reassignTarget || loading === "reassign"}
+                          className="flex-1 flex items-center justify-center gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          {loading === "reassign" ? "Reassigning..." : "Confirm"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setReassignSquare(null);
+                            setReassignTarget("");
+                          }}
+                          className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
+            )}
+
+            {!reassignMode && (
+              <p className="text-xs text-muted-foreground">
+                Use Reassign Mode to move squares between players.
+              </p>
+            )}
           </section>
         )}
 

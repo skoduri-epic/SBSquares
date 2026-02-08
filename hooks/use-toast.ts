@@ -24,15 +24,15 @@ export function toast({
   title,
   description,
   variant = "default",
-}: Omit<Toast, "id">) {
+  duration = 4000,
+}: Omit<Toast, "id"> & { duration?: number }) {
   const id = String(++toastId);
   const newToast: Toast = { id, title, description, variant };
   dispatch([...toastState, newToast]);
 
-  // Auto-dismiss after 4 seconds
   setTimeout(() => {
     dispatch(toastState.filter((t) => t.id !== id));
-  }, 4000);
+  }, duration);
 }
 
 export function useToast() {

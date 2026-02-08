@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useCallback, useEffect } from "react";
+import { use, useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { GameProvider, useGameContext } from "~/components/GameProvider";
 import { Grid } from "~/components/Grid";
@@ -10,6 +10,7 @@ import { QuarterResults } from "~/components/QuarterResults";
 import { PlayerLegend } from "~/components/PlayerLegend";
 import { supabase } from "~/lib/supabase";
 import { clearSession } from "~/hooks/use-game";
+import { pickRandomSquares, getDraftConfig } from "~/lib/game-logic";
 import { Settings, LogOut, Sun, Moon, Monitor, HelpCircle, Info, Hash, Clock, DollarSign, AlertCircle } from "lucide-react";
 import { useTheme, getTeamSwatch } from "~/hooks/use-theme";
 import { toast } from "~/hooks/use-toast";
@@ -40,10 +41,22 @@ export default function GamePage({
 
 function GameView({ gameId }: { gameId: string }) {
   const router = useRouter();
-  const { game, session, scores, draftOrder, loading, error, reload } = useGameContext();
+  const { game, session, scores, draftOrder, squares, loading, error, reload } = useGameContext();
   const [isManualPicking, setIsManualPicking] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [pickInfoOpen, setPickInfoOpen] = useState(false);
+  const [warning30sOpen, setWarning30sOpen] = useState(false);
   const { theme, resolvedTheme, setTheme, team, setTeam } = useTheme();
+
+  // Tentative pick state
+  const [tentativeQueue, setTentativeQueue] = useState<string[]>([]); // "row-col" keys in pick order
+  const [replaceCursor, setReplaceCursor] = useState(0);
+  const [timerSecondsLeft, setTimerSecondsLeft] = useState<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const warned30sRef = useRef(false);
+  const handleTimeoutRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const pickingRef = useRef(false); // mutex for handleTentativePick
+  const PICK_TIMEOUT_MS = 120_000; // 2 minutes
 
   // Auto-show rules modal on first visit per game
   useEffect(() => {
@@ -70,42 +83,286 @@ function GameView({ gameId }: { gameId: string }) {
   const batchOrder = draftOrder.filter((d) => d.batch === batch);
   const currentPicker = batchOrder.find((d) => d.picks_remaining > 0);
   const isMyTurn = currentPicker?.player_id === session?.playerId;
+  const myDraft = batchOrder.find((d) => d.player_id === session?.playerId);
+  // Use getDraftConfig for stable maxPicks (picks_remaining is 0 after confirm)
+  const draftConfig = game ? getDraftConfig(game.max_players ?? 10) : null;
+  const maxPicks = draftConfig
+    ? batch === 1
+      ? draftConfig.batch1Picks
+      : draftConfig.batch2Picks
+    : 0;
 
-  const handlePickSquare = useCallback(
+  // Reconstruct tentative queue from DB on load/reconnect
+  useEffect(() => {
+    if (!isMyTurn || !session || !game || !batch) return;
+    const myTentative = squares
+      .flat()
+      .filter((sq) => sq.player_id === session.playerId && sq.is_tentative && sq.batch === batch)
+      .sort((a, b) => (a.picked_at ?? "").localeCompare(b.picked_at ?? ""));
+    if (myTentative.length > 0) {
+      setTentativeQueue(myTentative.map((sq) => `${sq.row_pos}-${sq.col_pos}`));
+      setReplaceCursor(myTentative.length % maxPicks);
+      setIsManualPicking(true);
+    }
+  }, [isMyTurn, session, game, batch, squares, maxPicks]);
+
+  // Timer: tick every second based on tentative_started_at
+  useEffect(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    const startedAt = myDraft?.tentative_started_at;
+    if (!startedAt || !isMyTurn) {
+      setTimerSecondsLeft(null);
+      return;
+    }
+
+    warned30sRef.current = false;
+    const tick = () => {
+      const elapsed = Date.now() - new Date(startedAt).getTime();
+      const remaining = Math.max(0, Math.ceil((PICK_TIMEOUT_MS - elapsed) / 1000));
+      setTimerSecondsLeft(remaining);
+      if (remaining <= 30 && remaining > 0 && !warned30sRef.current) {
+        warned30sRef.current = true;
+        setWarning30sOpen(true);
+      }
+      if (remaining <= 0) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        timerRef.current = null;
+        handleTimeoutRef.current?.();
+      }
+    };
+
+    tick();
+    timerRef.current = setInterval(tick, 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myDraft?.tentative_started_at, isMyTurn]);
+
+  // Handle tentative pick (write to DB with is_tentative=true)
+  const handleTentativePick = useCallback(
     async (row: number, col: number) => {
-      if (!session || !game || !batch) return;
+      if (!session || !game || !batch || !myDraft || myDraft.picks_remaining <= 0) return;
+      // Mutex: prevent concurrent picks from fast clicks
+      if (pickingRef.current) return;
+      pickingRef.current = true;
+      try {
+        const key = `${row}-${col}`;
 
-      const myDraft = batchOrder.find((d) => d.player_id === session.playerId);
-      if (!myDraft || myDraft.picks_remaining <= 0) return;
+      // No-op if already tentatively selected by me
+      if (tentativeQueue.includes(key)) return;
 
-      // Claim the square
-      const { error } = await supabase
-        .from("squares")
-        .update({
-          player_id: session.playerId,
-          batch,
-          picked_at: new Date().toISOString(),
-        })
-        .eq("game_id", game.id)
-        .eq("row_pos", row)
-        .eq("col_pos", col)
-        .is("player_id", null);
+      // If queue is full, do circular replacement
+      if (tentativeQueue.length >= maxPicks) {
+        const oldKey = tentativeQueue[replaceCursor];
+        const [oldRow, oldCol] = oldKey.split("-").map(Number);
 
-      if (error) {
-        console.error("Pick failed:", error);
-        return;
+        // Clear old tentative square
+        await supabase
+          .from("squares")
+          .update({
+            player_id: null,
+            is_tentative: false,
+            batch: null,
+            picked_at: null,
+          })
+          .eq("game_id", game.id)
+          .eq("row_pos", oldRow)
+          .eq("col_pos", oldCol)
+          .eq("player_id", session.playerId)
+          .eq("is_tentative", true);
+
+        // Write new tentative square
+        const { data: updated, error } = await supabase
+          .from("squares")
+          .update({
+            player_id: session.playerId,
+            batch,
+            picked_at: new Date().toISOString(),
+            is_tentative: true,
+          })
+          .eq("game_id", game.id)
+          .eq("row_pos", row)
+          .eq("col_pos", col)
+          .is("player_id", null)
+          .select();
+
+        if (error || !updated || updated.length === 0) {
+          const detail = error?.message ?? "0 rows updated — square may already be taken";
+          console.error("Tentative pick failed (replace):", detail);
+          toast({
+            title: "Square unavailable",
+            description: error ? `Database error: ${error.message}` : "That square was already taken.",
+            variant: "destructive",
+          });
+          reload();
+          return;
+        }
+
+        setTentativeQueue((q) => {
+          const next = [...q];
+          next[replaceCursor] = key;
+          return next;
+        });
+        setReplaceCursor((c) => (c + 1) % maxPicks);
+      } else {
+        // Queue not full yet -- add new tentative pick
+        const isFirstPick = tentativeQueue.length === 0 && !myDraft.tentative_started_at;
+
+        const { data: updated, error } = await supabase
+          .from("squares")
+          .update({
+            player_id: session.playerId,
+            batch,
+            picked_at: new Date().toISOString(),
+            is_tentative: true,
+          })
+          .eq("game_id", game.id)
+          .eq("row_pos", row)
+          .eq("col_pos", col)
+          .is("player_id", null)
+          .select();
+
+        if (error || !updated || updated.length === 0) {
+          const detail = error?.message ?? "0 rows updated — square may already be taken";
+          console.error("Tentative pick failed:", detail);
+          toast({
+            title: "Square unavailable",
+            description: error ? `Database error: ${error.message}` : "That square was already taken.",
+            variant: "destructive",
+          });
+          reload();
+          return;
+        }
+
+        // Start timer on first pick
+        if (isFirstPick) {
+          await supabase
+            .from("draft_order")
+            .update({ tentative_started_at: new Date().toISOString() })
+            .eq("id", myDraft.id);
+        }
+
+        setTentativeQueue((q) => [...q, key]);
       }
 
-      // Decrement picks remaining
-      await supabase
-        .from("draft_order")
-        .update({ picks_remaining: myDraft.picks_remaining - 1 })
-        .eq("id", myDraft.id);
-
       reload();
+      } finally {
+        pickingRef.current = false;
+      }
     },
-    [session, game, batch, batchOrder, reload]
+    [session, game, batch, myDraft, tentativeQueue, maxPicks, replaceCursor, reload]
   );
+
+  // Confirm all tentative picks
+  const handleConfirmPicks = useCallback(async () => {
+    if (!session || !game || !batch || !myDraft) return;
+
+    // Finalize: set is_tentative=false for all my tentative squares
+    await supabase
+      .from("squares")
+      .update({ is_tentative: false })
+      .eq("game_id", game.id)
+      .eq("player_id", session.playerId)
+      .eq("is_tentative", true);
+
+    // Decrement picks_remaining to 0 and clear timer
+    await supabase
+      .from("draft_order")
+      .update({ picks_remaining: 0, tentative_started_at: null })
+      .eq("id", myDraft.id);
+
+    setTentativeQueue([]);
+    setReplaceCursor(0);
+    setIsManualPicking(false);
+    reload();
+  }, [session, game, batch, myDraft, reload]);
+
+  // Timeout handler: auto-confirm existing tentative + random-fill remaining
+  const handleTimeout = useCallback(async () => {
+    if (!session || !game || !batch || !myDraft || myDraft.picks_remaining <= 0) return;
+
+    // Query DB for actual tentative count to avoid stale closure state
+    const { count: myTentativeCount } = await supabase
+      .from("squares")
+      .select("*", { count: "exact", head: true })
+      .eq("game_id", game.id)
+      .eq("player_id", session.playerId)
+      .eq("is_tentative", true)
+      .eq("batch", batch);
+
+    // Use getDraftConfig for stable picks count
+    const cfg = getDraftConfig(game.max_players ?? 10);
+    const batchPicks = batch === 1 ? cfg.batch1Picks : cfg.batch2Picks;
+
+    // Safety: cap remaining (never negative)
+    const remaining = Math.max(0, batchPicks - (myTentativeCount ?? 0));
+
+    // Random-fill remaining slots if needed
+    if (remaining > 0) {
+      // Re-fetch squares from DB for fresh state to avoid stale closure issues
+      const { data: freshSquares } = await supabase
+        .from("squares")
+        .select("row_pos, col_pos, player_id")
+        .eq("game_id", game.id)
+        .is("player_id", null);
+
+      const available = (freshSquares ?? []).map((sq) => ({
+        row: sq.row_pos,
+        col: sq.col_pos,
+      }));
+
+      // Shuffle and take only what we need
+      for (let i = available.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [available[i], available[j]] = [available[j], available[i]];
+      }
+      const randomPicks = available.slice(0, remaining);
+
+      for (const pick of randomPicks) {
+        await supabase
+          .from("squares")
+          .update({
+            player_id: session.playerId,
+            batch,
+            picked_at: new Date().toISOString(),
+            is_tentative: true,
+          })
+          .eq("game_id", game.id)
+          .eq("row_pos", pick.row)
+          .eq("col_pos", pick.col)
+          .is("player_id", null);
+      }
+    }
+
+    // Confirm all tentative picks
+    await supabase
+      .from("squares")
+      .update({ is_tentative: false })
+      .eq("game_id", game.id)
+      .eq("player_id", session.playerId)
+      .eq("is_tentative", true);
+
+    // Finalize turn
+    await supabase
+      .from("draft_order")
+      .update({ picks_remaining: 0, tentative_started_at: null })
+      .eq("id", myDraft.id);
+
+    setTentativeQueue([]);
+    setReplaceCursor(0);
+    setIsManualPicking(false);
+    toast({ title: "Time's up!", description: "Your picks were auto-confirmed." });
+    reload();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, game, batch, myDraft, reload]);
+
+  // Keep ref in sync so timer always calls latest handleTimeout
+  handleTimeoutRef.current = handleTimeout;
 
   function handleLogout() {
     clearSession();
@@ -210,7 +467,7 @@ function GameView({ gameId }: { gameId: string }) {
       </header>
 
       {/* Main content */}
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-4 space-y-4">
+      <main className={cn("flex-1 max-w-4xl mx-auto w-full px-4 py-4 space-y-4", isManualPicking && "pb-20")}>
         {/* Scoreboard */}
         <ScoreBoard />
 
@@ -245,14 +502,28 @@ function GameView({ gameId }: { gameId: string }) {
 
         {/* Pick controls (shown during draft) */}
         {(game.status === "batch1" || game.status === "batch2") && (
-          <PickControls onPickingStateChange={setIsManualPicking} />
+          <PickControls
+            onPickingStateChange={(picking) => {
+              if (picking) {
+                setPickInfoOpen(true);
+              } else {
+                setIsManualPicking(false);
+              }
+            }}
+            isManualPicking={isManualPicking}
+            tentativeQueue={tentativeQueue}
+            onConfirm={handleConfirmPicks}
+            timerSecondsLeft={timerSecondsLeft}
+            maxPicks={maxPicks}
+          />
         )}
 
         {/* Grid */}
         <div className="flex justify-center">
           <Grid
-            onPickSquare={isManualPicking && isMyTurn ? handlePickSquare : undefined}
+            onPickSquare={isManualPicking && isMyTurn ? handleTentativePick : undefined}
             isMyTurn={isManualPicking && isMyTurn}
+            tentativeQueue={tentativeQueue}
             activeQuarterScores={scores}
           />
         </div>
@@ -312,6 +583,58 @@ function GameView({ gameId }: { gameId: string }) {
           <DialogFooter>
             <DialogClose asChild>
               <button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg px-4 py-2.5 text-sm font-medium transition-colors">
+                Got it
+              </button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pick Info Modal — shown when entering manual pick mode */}
+      <Dialog open={pickInfoOpen} onOpenChange={setPickInfoOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-xl tracking-wider">Pick your squares</DialogTitle>
+            <DialogDescription className="sr-only">Instructions for manual square picking</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              You have <span className="font-semibold text-foreground">2 minutes</span> to pick your squares.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Tap squares on the grid to select them. Tap a new square to swap out the oldest pick.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Any remaining slots will be <span className="font-semibold text-foreground">randomly filled</span> when time runs out.
+            </p>
+          </div>
+          <DialogFooter>
+            <button
+              onClick={() => {
+                setPickInfoOpen(false);
+                setIsManualPicking(true);
+              }}
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
+            >
+              Start Picking
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 30-Second Warning Modal */}
+      <Dialog open={warning30sOpen} onOpenChange={setWarning30sOpen}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="text-lg tracking-wider text-destructive">30 seconds left</DialogTitle>
+            <DialogDescription className="sr-only">Time warning for square picking</DialogDescription>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">
+            Remaining squares will be randomly filled when time runs out.
+          </p>
+          <DialogFooter>
+            <DialogClose asChild>
+              <button className="w-full bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-lg px-4 py-2.5 text-sm font-medium transition-colors">
                 Got it
               </button>
             </DialogClose>

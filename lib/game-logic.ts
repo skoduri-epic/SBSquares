@@ -57,7 +57,10 @@ export function calculateQuarterResult(
   }
 
   const winnerSquare = squares[winnerRow]?.[winnerCol];
-  const winnerPlayerId = winnerSquare?.player_id ?? null;
+  // Skip tentative (unconfirmed) squares — they haven't been finalized yet
+  const winnerPlayerId = (winnerSquare && !winnerSquare.is_tentative)
+    ? winnerSquare.player_id
+    : null;
 
   // Same digit = winner gets full prize, no runner-up
   if (rowDigit === colDigit) {
@@ -80,7 +83,7 @@ export function calculateQuarterResult(
 
   if (runnerUpRow !== undefined && runnerUpCol !== undefined) {
     const ruSquare = squares[runnerUpRow]?.[runnerUpCol];
-    runnerUpPlayerId = ruSquare?.player_id ?? null;
+    runnerUpPlayerId = (ruSquare && !ruSquare.is_tentative) ? ruSquare.player_id : null;
     runnerUpSquare = { row: runnerUpRow, col: runnerUpCol };
   }
 
@@ -130,7 +133,7 @@ export function pickRandomSquares(
 
   for (let r = 0; r < 10; r++) {
     for (let c = 0; c < 10; c++) {
-      if (!squares[r][c].player_id) {
+      if (!squares[r][c].player_id && !squares[r][c].is_tentative) {
         available.push({ row: r, col: c });
       }
     }

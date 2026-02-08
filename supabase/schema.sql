@@ -34,6 +34,7 @@ CREATE TABLE squares (
   player_id UUID REFERENCES players(id),
   batch INTEGER CHECK (batch IN (1, 2)),
   picked_at TIMESTAMPTZ,
+  is_tentative BOOLEAN NOT NULL DEFAULT false,
   UNIQUE(game_id, row_pos, col_pos)
 );
 
@@ -55,6 +56,7 @@ CREATE TABLE draft_order (
   player_id UUID NOT NULL REFERENCES players(id),
   pick_order INTEGER NOT NULL,
   picks_remaining INTEGER NOT NULL DEFAULT 5,
+  tentative_started_at TIMESTAMPTZ DEFAULT NULL,
   UNIQUE(game_id, batch, player_id)
 );
 
@@ -85,6 +87,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE scores;
 CREATE INDEX idx_players_game_id ON players(game_id);
 CREATE INDEX idx_squares_game_id ON squares(game_id);
 CREATE INDEX idx_squares_player_id ON squares(player_id);
+CREATE INDEX idx_squares_tentative ON squares(game_id) WHERE is_tentative = true;
 CREATE INDEX idx_digit_assignments_game_id ON digit_assignments(game_id);
 CREATE INDEX idx_draft_order_game_id ON draft_order(game_id);
 CREATE INDEX idx_scores_game_id ON scores(game_id);

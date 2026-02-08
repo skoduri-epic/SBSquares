@@ -39,6 +39,7 @@ export interface Square {
   player_id: string | null;
   batch: number | null;
   picked_at: string | null;
+  is_tentative: boolean;
 }
 
 export interface DigitAssignment {
@@ -56,6 +57,7 @@ export interface DraftOrder {
   player_id: string;
   pick_order: number;
   picks_remaining: number;
+  tentative_started_at: string | null;
 }
 
 export interface Score {

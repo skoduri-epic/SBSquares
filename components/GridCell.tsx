@@ -12,6 +12,8 @@ interface GridCellProps {
   isAvailable: boolean;
   isMyTurn: boolean;
   isMine: boolean;
+  isTentative: boolean;
+  tentativeIndex: number | null; // 1-based pick number badge
   isWinner: boolean;
   isRunnerUp: boolean;
   isDark: boolean;
@@ -26,6 +28,8 @@ export function GridCell({
   isAvailable,
   isMyTurn,
   isMine,
+  isTentative,
+  tentativeIndex,
   isWinner,
   isRunnerUp,
   isDark,
@@ -33,15 +37,18 @@ export function GridCell({
   runnerUpQuarters,
   onPick,
 }: GridCellProps) {
-  const canPick = isAvailable && isMyTurn && onPick;
+  // Can pick if: empty and my turn, OR tentative replacement (my turn + clicking non-mine empty)
+  const canPick = isMyTurn && onPick && (!player || (isTentative && isMine));
+  const isTentativeMine = isTentative && isMine;
+  const isTentativeOther = isTentative && !isMine;
 
   return (
     <button
-      onClick={canPick ? onPick : undefined}
-      disabled={!canPick}
+      onClick={canPick || (isAvailable && isMyTurn && onPick) ? onPick : undefined}
+      disabled={!(canPick || (isAvailable && isMyTurn && onPick))}
       aria-label={
         player
-          ? `Square ${square.row_pos},${square.col_pos} claimed by ${player.name}`
+          ? `Square ${square.row_pos},${square.col_pos} ${isTentative ? "tentatively " : ""}claimed by ${player.name}`
           : `Square ${square.row_pos},${square.col_pos} available`
       }
       className={cn(
@@ -50,13 +57,17 @@ export function GridCell({
         // Hover elevation (EventOS pattern)
         "hover:shadow-md hover:-translate-y-0.5",
         // Empty/available
-        !player && !canPick && "border border-dashed border-border/40 bg-muted/20",
-        // Pickable
-        canPick && "border-2 border-dashed border-primary/60 bg-primary/10 cursor-pointer cell-available hover:bg-primary/20 hover:border-primary hover:shadow-lg hover:-translate-y-1",
-        // Claimed - mine (thicker border, higher opacity)
-        player && isMine && "border-[3px]",
-        // Claimed - others
-        player && !isMine && "border border-transparent",
+        !player && !isMyTurn && "border border-dashed border-border/40 bg-muted/20",
+        // Pickable (empty + my turn)
+        !player && isMyTurn && onPick && "border-2 border-dashed border-primary/60 bg-primary/10 cursor-pointer cell-available hover:bg-primary/20 hover:border-primary hover:shadow-lg hover:-translate-y-1",
+        // Tentative mine: pulsing ring
+        isTentativeMine && "border-2 ring-2 ring-accent/60 animate-pulse cursor-pointer",
+        // Tentative other: dashed border
+        isTentativeOther && "border-2 border-dashed",
+        // Confirmed mine (not tentative)
+        player && isMine && !isTentative && "border-[3px]",
+        // Confirmed others (not tentative)
+        player && !isMine && !isTentative && "border border-transparent",
         // Winner
         isWinner && "cell-winner ring-2 ring-winner z-10",
         // Runner-up
@@ -65,9 +76,17 @@ export function GridCell({
       style={
         player
           ? {
-              backgroundColor: player.color + (isMine ? (isDark ? "70" : "30") : (isDark ? "35" : "20")),
-              borderColor: isMine && isDark ? player.color : player.color + (isMine ? "80" : (isDark ? "60" : "50")),
-              ...(isMine && isDark && !isWinner && !isRunnerUp
+              backgroundColor: isTentativeMine
+                ? player.color + (isDark ? "50" : "25")
+                : isTentativeOther
+                  ? player.color + (isDark ? "20" : "10")
+                  : player.color + (isMine ? (isDark ? "70" : "30") : (isDark ? "35" : "20")),
+              borderColor: isTentativeMine
+                ? player.color
+                : isTentativeOther
+                  ? player.color + "60"
+                  : isMine && isDark ? player.color : player.color + (isMine ? "80" : (isDark ? "60" : "50")),
+              ...(isMine && isDark && !isTentative && !isWinner && !isRunnerUp
                 ? { boxShadow: `0 0 6px ${player.color}50, inset 0 0 4px ${player.color}20` }
                 : {}),
             }
@@ -76,10 +95,16 @@ export function GridCell({
     >
       {player && (
         <span
-          className="font-bold leading-none"
+          className={cn("font-bold leading-none", isTentativeOther && "opacity-50")}
           style={{ color: player.color }}
         >
           {getPlayerInitials(player.name)}
+        </span>
+      )}
+      {/* Tentative pick number badge */}
+      {isTentativeMine && tentativeIndex !== null && (
+        <span className="absolute -top-1.5 -right-1.5 text-[7px] sm:text-[8px] bg-accent text-accent-foreground px-1 rounded-full font-bold leading-tight z-20">
+          {tentativeIndex}
         </span>
       )}
       {isWinner && (
