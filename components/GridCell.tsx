@@ -16,6 +16,9 @@ interface GridCellProps {
   tentativeIndex: number | null; // 1-based pick number badge
   isWinner: boolean;
   isRunnerUp: boolean;
+  isLiveWinner: boolean;
+  isLiveRunnerUp: boolean;
+  liveQuarter: number | null;
   isDark: boolean;
   winnerQuarters?: string[];
   runnerUpQuarters?: string[];
@@ -32,6 +35,9 @@ export function GridCell({
   tentativeIndex,
   isWinner,
   isRunnerUp,
+  isLiveWinner,
+  isLiveRunnerUp,
+  liveQuarter,
   isDark,
   winnerQuarters,
   runnerUpQuarters,
@@ -71,7 +77,10 @@ export function GridCell({
         // Winner
         isWinner && "cell-winner ring-2 ring-winner z-10",
         // Runner-up
-        isRunnerUp && "ring-2 ring-runner-up z-10"
+        isRunnerUp && "ring-2 ring-runner-up z-10",
+        // Live pulsing (in-progress quarter — can overlay confirmed winners from earlier quarters)
+        isLiveWinner && "cell-live-winner z-10",
+        isLiveRunnerUp && "cell-live-runner-up z-10"
       )}
       style={
         player
@@ -86,7 +95,7 @@ export function GridCell({
                 : isTentativeOther
                   ? player.color + "60"
                   : isMine && isDark ? player.color : player.color + (isMine ? "80" : (isDark ? "60" : "50")),
-              ...(isMine && isDark && !isTentative && !isWinner && !isRunnerUp
+              ...(isMine && isDark && !isTentative && !isWinner && !isRunnerUp && !isLiveWinner && !isLiveRunnerUp
                 ? { boxShadow: `0 0 6px ${player.color}50, inset 0 0 4px ${player.color}20` }
                 : {}),
             }
@@ -103,21 +112,31 @@ export function GridCell({
       )}
       {/* Tentative pick number badge */}
       {isTentativeMine && tentativeIndex !== null && (
-        <span className="absolute -top-1.5 -right-1.5 text-[7px] sm:text-[8px] bg-accent text-accent-foreground px-1 rounded-full font-bold leading-tight z-20">
+        <span className="absolute -top-1.5 -right-1.5 text-[10px] bg-accent text-accent-foreground px-1 rounded-full font-bold leading-tight z-20">
           {tentativeIndex}
         </span>
       )}
       {isWinner && (
-        <Trophy className="absolute -top-1 -left-1 w-3 h-3 text-winner z-20" />
+        <Trophy className="absolute -top-1.5 -left-1.5 w-3.5 h-3.5 text-winner z-20" />
       )}
       {isWinner && winnerQuarters && winnerQuarters.length > 0 && (
-        <span className="absolute -top-1.5 -right-1.5 text-[7px] sm:text-[8px] bg-winner text-black px-0.5 sm:px-1 rounded-full font-bold leading-tight z-20">
+        <span className="absolute -top-1.5 -right-1.5 text-[10px] bg-winner text-black px-1 rounded-full font-bold leading-tight z-20">
           {winnerQuarters.join(" ")}
         </span>
       )}
       {isRunnerUp && runnerUpQuarters && runnerUpQuarters.length > 0 && (
-        <span className="absolute -top-1.5 -right-1.5 text-[7px] sm:text-[8px] bg-runner-up text-black px-0.5 sm:px-1 rounded-full font-bold leading-tight z-20">
+        <span className="absolute -top-1.5 -right-1.5 text-[10px] bg-runner-up text-black px-1 rounded-full font-bold leading-tight z-20">
           {runnerUpQuarters.join(" ")}
+        </span>
+      )}
+      {(isLiveWinner || isLiveRunnerUp) && (
+        <span
+          className={cn(
+            "absolute -bottom-1.5 left-1/2 -translate-x-1/2 text-[10px] px-1 rounded-full font-bold leading-tight z-20 animate-pulse uppercase tracking-wider",
+            isLiveWinner ? "bg-winner text-black" : "bg-runner-up text-black"
+          )}
+        >
+          LIVE
         </span>
       )}
     </button>

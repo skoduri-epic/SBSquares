@@ -8,10 +8,11 @@ import { generateDraftOrder, generateDigitPermutation, calculateQuarterResult, p
 import type { Quarter } from "~/lib/types";
 import { PLAYER_COLORS } from "~/lib/types";
 import { cn } from "~/lib/utils";
-import { ArrowLeft, Play, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X, Users, Copy, Check, Link2, Share2, Lock, DollarSign, Download, Image, Zap, ArrowRightLeft } from "lucide-react";
+import { ArrowLeft, Play, Pause, SkipForward, FlaskConical, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X, Users, Copy, Check, Link2, Share2, Lock, DollarSign, Download, Image, Zap, ArrowRightLeft } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { setSession } from "~/hooks/use-game";
 import { useLiveScores } from "~/hooks/use-live-scores";
+import { SIMULATION_FIXTURE, type SimulationStep } from "~/lib/simulation-fixture";
 import { TeamCombobox } from "~/components/TeamCombobox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/ui/tooltip";
 import {
@@ -1694,6 +1695,11 @@ function AdminView({ gameId }: { gameId: string }) {
           <ScoreEntry gameId={gameId} />
         )}
 
+        {/* Simulation Runner (development only) */}
+        {process.env.NODE_ENV === "development" && (game.status === "live" || game.status === "locked") && (
+          <SimulationRunner gameId={gameId} />
+        )}
+
         {/* Player List with square counts */}
         <section className="bg-card border border-border rounded-lg p-4">
           <h2 className="text-xl tracking-wider mb-3">Players</h2>
@@ -2451,6 +2457,236 @@ function ScoreEntry({ gameId }: { gameId: string }) {
           </div>
         );
       })}
+    </section>
+  );
+}
+
+function SimulationRunner({ gameId }: { gameId: string }) {
+  const { game, scores, reload } = useGameContext();
+  const [currentStep, setCurrentStep] = useState(0);
+  const [autoPlay, setAutoPlay] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stepRef = useRef(currentStep);
+  stepRef.current = currentStep;
+
+  const steps = SIMULATION_FIXTURE;
+  const step = steps[currentStep] ?? null;
+  const isComplete = currentStep >= steps.length;
+
+  // Auto-play interval
+  useEffect(() => {
+    if (!autoPlay || isComplete) {
+      if (autoPlayRef.current) {
+        clearInterval(autoPlayRef.current);
+        autoPlayRef.current = null;
+      }
+      return;
+    }
+
+    async function tick() {
+      const idx = stepRef.current;
+      if (idx >= steps.length) {
+        setAutoPlay(false);
+        return;
+      }
+      await runStep(steps[idx]);
+      setCurrentStep(idx + 1);
+      if (idx + 1 >= steps.length) {
+        setAutoPlay(false);
+      }
+    }
+
+    // Run first tick immediately, then schedule
+    tick();
+    autoPlayRef.current = setInterval(tick, 3000);
+
+    return () => {
+      if (autoPlayRef.current) {
+        clearInterval(autoPlayRef.current);
+        autoPlayRef.current = null;
+      }
+    };
+  }, [autoPlay]);
+
+  async function runStep(s: SimulationStep) {
+    setLoading(true);
+    setError(null);
+    try {
+      const body: Record<string, unknown> = {
+        action: s.action,
+        gameId,
+      };
+
+      if (s.action === "set-live" || s.action === "complete-quarter") {
+        body.quarter = s.quarter;
+        body.teamRowScore = s.teamRowScore;
+        body.teamColScore = s.teamColScore;
+        body.statusDetail = s.statusDetail;
+      }
+
+      const res = await fetch("/api/live-scores/simulate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        setError(data.error || "Simulation step failed");
+      }
+
+      reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Simulation error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleNextStep() {
+    if (isComplete || !step) return;
+    await runStep(step);
+    setCurrentStep((prev) => prev + 1);
+  }
+
+  async function handleReset() {
+    setAutoPlay(false);
+    setCurrentStep(0);
+    setError(null);
+    setLoading(true);
+    try {
+      // Clear live score
+      await fetch("/api/live-scores/simulate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear", gameId }),
+      });
+
+      // Delete all simulated scores
+      const supabaseModule = await import("~/lib/supabase");
+      await supabaseModule.supabase
+        .from("scores")
+        .delete()
+        .eq("game_id", gameId);
+
+      // Reset game status back to live if it was completed
+      if (game?.status === "completed") {
+        await supabaseModule.supabase
+          .from("games")
+          .update({ status: "live" })
+          .eq("id", gameId);
+      }
+
+      reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Reset failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="bg-card border border-amber-500/30 rounded-lg p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl tracking-wider flex items-center gap-2">
+          <FlaskConical className="w-5 h-5 text-amber-400" />
+          Simulate Game
+        </h2>
+        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+          DEV ONLY
+        </span>
+      </div>
+
+      {/* Progress */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>Step {Math.min(currentStep + 1, steps.length)} / {steps.length}</span>
+          <span>{scores.length} quarter(s) scored</span>
+        </div>
+        <div className="w-full bg-background rounded-full h-1.5">
+          <div
+            className="bg-amber-400 h-1.5 rounded-full transition-all duration-300"
+            style={{ width: `${(currentStep / steps.length) * 100}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Current/Next step info */}
+      {step && !isComplete && (
+        <div className="bg-background/50 border border-border/60 rounded-lg px-3 py-2 space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+              Q{step.quarter}
+            </span>
+            <span className="text-[10px] font-mono text-muted-foreground">
+              {step.statusDetail}
+            </span>
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-secondary/50 text-muted-foreground ml-auto">
+              {step.action}
+            </span>
+          </div>
+          <p className="text-sm">{step.event}</p>
+          <p className="text-xs tabular-nums text-muted-foreground">
+            {game?.team_row} {step.teamRowScore} - {game?.team_col} {step.teamColScore}
+          </p>
+        </div>
+      )}
+
+      {isComplete && (
+        <div className="bg-green-500/10 border border-green-500/30 rounded-lg px-3 py-2 text-center">
+          <p className="text-sm text-green-400">Simulation complete</p>
+        </div>
+      )}
+
+      {error && (
+        <p className="text-[11px] text-red-400">{error}</p>
+      )}
+
+      {/* Controls */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleNextStep}
+          disabled={loading || isComplete || autoPlay}
+          className="flex-1 flex items-center justify-center gap-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <SkipForward className="w-4 h-4" />
+          {loading ? "Running..." : "Next Step"}
+        </button>
+
+        <button
+          onClick={() => setAutoPlay(!autoPlay)}
+          disabled={isComplete}
+          className={cn(
+            "flex items-center justify-center gap-1.5 border rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed",
+            autoPlay
+              ? "bg-red-500/20 hover:bg-red-500/30 text-red-300 border-red-500/30"
+              : "bg-green-500/20 hover:bg-green-500/30 text-green-300 border-green-500/30"
+          )}
+        >
+          {autoPlay ? (
+            <>
+              <Pause className="w-4 h-4" />
+              Stop
+            </>
+          ) : (
+            <>
+              <Play className="w-4 h-4" />
+              Auto
+            </>
+          )}
+        </button>
+
+        <button
+          onClick={handleReset}
+          disabled={loading || autoPlay}
+          className="flex items-center justify-center gap-1.5 text-muted-foreground hover:text-foreground border border-border/60 hover:border-border rounded-lg px-3 py-2 text-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <RotateCcw className="w-4 h-4" />
+          Reset
+        </button>
+      </div>
     </section>
   );
 }

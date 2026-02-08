@@ -34,6 +34,11 @@ export function Grid({ onPickSquare, isMyTurn = false, tentativeQueue = [], acti
   const winnerSquares = new Map<string, string[]>();
   const runnerUpSquares = new Map<string, string[]>();
 
+  // Live pulsing squares from in-progress quarter score
+  let liveWinnerKey: string | null = null;
+  let liveRunnerUpKey: string | null = null;
+  let liveQuarter: number | null = null;
+
   if (digitAssignments.length > 0) {
     const rowDigitToPos = new Map<number, number>();
     const colDigitToPos = new Map<number, number>();
@@ -59,6 +64,27 @@ export function Grid({ onPickSquare, isMyTurn = false, tentativeQueue = [], acti
           const rKey = `${rr}-${rc}`;
           if (!runnerUpSquares.has(rKey)) runnerUpSquares.set(rKey, []);
           runnerUpSquares.get(rKey)!.push(score.quarter);
+        }
+      }
+    }
+
+    // Compute live pulsing squares from live_quarter_score
+    const lqs = game?.live_quarter_score;
+    if (lqs && game?.status === "live") {
+      const rd = lqs.team_row_score % 10;
+      const cd = lqs.team_col_score % 10;
+      const wr = rowDigitToPos.get(rd);
+      const wc = colDigitToPos.get(cd);
+      if (wr !== undefined && wc !== undefined) {
+        liveWinnerKey = `${wr}-${wc}`;
+        liveQuarter = lqs.quarter;
+      }
+      // Runner-up: opposite square (digits swapped), only when digits differ
+      if (rd !== cd) {
+        const rr = rowDigitToPos.get(cd);
+        const rc = colDigitToPos.get(rd);
+        if (rr !== undefined && rc !== undefined) {
+          liveRunnerUpKey = `${rr}-${rc}`;
         }
       }
     }
@@ -175,6 +201,9 @@ export function Grid({ onPickSquare, isMyTurn = false, tentativeQueue = [], acti
                       tentativeIndex={tentIdx >= 0 ? tentIdx + 1 : null}
                       isWinner={winnerSquares.has(key)}
                       isRunnerUp={runnerUpSquares.has(key) && !winnerSquares.has(key)}
+                      isLiveWinner={liveWinnerKey === key}
+                      isLiveRunnerUp={liveRunnerUpKey === key}
+                      liveQuarter={liveWinnerKey === key || liveRunnerUpKey === key ? liveQuarter : null}
                       isDark={isDark}
                       winnerQuarters={winnerSquares.get(key)}
                       runnerUpQuarters={runnerUpSquares.get(key)}

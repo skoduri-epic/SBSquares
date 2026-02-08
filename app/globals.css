@@ -163,6 +163,51 @@
   animation: winner-glow 2s ease-in-out infinite;
 }
 
+/* Live in-progress winner/runner-up pulsing (faster, more energetic than confirmed) */
+@keyframes live-winner-pulse {
+  0%, 100% {
+    box-shadow: 0 0 6px 1px rgba(245, 158, 11, 0.4);
+    border-color: rgba(245, 158, 11, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 18px 4px rgba(245, 158, 11, 0.7), 0 0 30px 8px rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 1);
+  }
+}
+
+@keyframes live-runner-up-pulse {
+  0%, 100% {
+    box-shadow: 0 0 6px 1px rgba(148, 163, 184, 0.4);
+    border-color: rgba(148, 163, 184, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 18px 4px rgba(148, 163, 184, 0.7), 0 0 30px 8px rgba(148, 163, 184, 0.15);
+    border-color: rgba(148, 163, 184, 1);
+  }
+}
+
+.cell-live-winner {
+  animation: live-winner-pulse 1.5s ease-in-out infinite;
+  border: 2px solid rgba(245, 158, 11, 0.6);
+  z-index: 10;
+}
+
+.cell-live-runner-up {
+  animation: live-runner-up-pulse 1.5s ease-in-out infinite;
+  border: 2px solid rgba(148, 163, 184, 0.6);
+  z-index: 10;
+}
+
+/* Live score shimmer effect for in-progress numbers */
+@keyframes live-score-shimmer {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.live-score-number {
+  animation: live-score-shimmer 2s ease-in-out infinite;
+}
+
 /* Google-style oscillating progress bar */
 @keyframes progress-bar {
   0% {

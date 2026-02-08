@@ -8,7 +8,7 @@ import {
   matchTeamToAxis,
 } from "~/lib/espn";
 import { calculateQuarterResult } from "~/lib/game-logic";
-import type { Square, DigitAssignment, Player, Score, Quarter } from "~/lib/types";
+import type { Square, DigitAssignment, Player, Score, Quarter, LiveQuarterScore } from "~/lib/types";
 
 // Use service-level client for server-side writes
 const supabase = createClient(
@@ -92,6 +92,13 @@ export async function POST(request: Request) {
     }
 
     if (espnScores.status === "pregame") {
+      // Clear any stale live score during pregame
+      if (game.live_quarter_score !== null) {
+        await supabase
+          .from("games")
+          .update({ live_quarter_score: null })
+          .eq("id", gameId);
+      }
       return NextResponse.json({
         success: true,
         updated: [],
@@ -235,7 +242,32 @@ export async function POST(request: Request) {
       updated.push(q.quarter);
     }
 
-    // 6. If game is final and all 4 quarters are scored, mark completed
+    // 6. Write live_quarter_score for the current in-progress quarter
+    // This enables real-time grid pulsing on the winning square
+    let liveQuarterScore: LiveQuarterScore | null = null;
+
+    if (espnScores.status === "live") {
+      // Find the current in-progress quarter (has linescore data but not yet complete)
+      const inProgressQuarter = espnScores.quarters.find((q) => !q.isComplete);
+
+      if (inProgressQuarter) {
+        const { rowScore, colScore } = getScores(inProgressQuarter);
+        liveQuarterScore = {
+          quarter: espnScores.currentPeriod,
+          team_row_score: rowScore,
+          team_col_score: colScore,
+          status_detail: espnScores.statusDetail,
+        };
+      }
+    }
+    // For pregame, halftime, final, or no in-progress quarter: liveQuarterScore stays null
+
+    await supabase
+      .from("games")
+      .update({ live_quarter_score: liveQuarterScore })
+      .eq("id", gameId);
+
+    // 7. If game is final and all 4 quarters are scored, mark completed
     let newGameStatus = game.status;
     if (espnScores.status === "final") {
       const allQuarters: Quarter[] = ["Q1", "Q2", "Q3", "Q4"];
@@ -248,7 +280,7 @@ export async function POST(request: Request) {
       if (allScored && game.status !== "completed") {
         await supabase
           .from("games")
-          .update({ status: "completed" })
+          .update({ status: "completed", live_quarter_score: null })
           .eq("id", gameId);
         newGameStatus = "completed";
       }

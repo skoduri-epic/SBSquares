@@ -2,6 +2,14 @@ export type GameStatus = "setup" | "batch1" | "batch2" | "locked" | "live" | "co
 export type Quarter = "Q1" | "Q2" | "Q3" | "Q4";
 export type Axis = "row" | "col";
 
+/** Real-time score for the currently in-progress quarter (stored in games.live_quarter_score JSONB) */
+export interface LiveQuarterScore {
+  quarter: number;          // 1-4 (current period number)
+  team_row_score: number;   // cumulative score for the row team
+  team_col_score: number;   // cumulative score for the col team
+  status_detail: string;    // e.g. "3:24 - 2nd Quarter"
+}
+
 export interface Game {
   id: string;
   name: string;
@@ -18,6 +26,7 @@ export interface Game {
   invite_enabled: boolean;
   auto_scores_enabled: boolean;
   espn_event_id: string | null;
+  live_quarter_score: LiveQuarterScore | null;
   created_at: string;
 }
 
