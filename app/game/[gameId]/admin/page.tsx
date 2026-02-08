@@ -1695,8 +1695,8 @@ function AdminView({ gameId }: { gameId: string }) {
           <ScoreEntry gameId={gameId} />
         )}
 
-        {/* Simulation Runner (development only) */}
-        {process.env.NODE_ENV === "development" && (game.status === "live" || game.status === "locked") && (
+        {/* Simulation Runner (only for games with simulation_enabled flag) */}
+        {game.simulation_enabled && (game.status === "live" || game.status === "locked") && (
           <SimulationRunner gameId={gameId} />
         )}
 

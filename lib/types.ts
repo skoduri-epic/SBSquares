@@ -27,6 +27,7 @@ export interface Game {
   auto_scores_enabled: boolean;
   espn_event_id: string | null;
   live_quarter_score: LiveQuarterScore | null;
+  simulation_enabled: boolean;
   created_at: string;
 }
 

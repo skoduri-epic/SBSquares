@@ -5,7 +5,7 @@ import { supabase } from "~/lib/supabase";
 import { timeAgo } from "~/lib/utils";
 import { MAX_GAMES } from "~/lib/constants";
 import type { Game } from "~/lib/types";
-import { Lock, Trash2 } from "lucide-react";
+import { Lock, Trash2, FlaskConical } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import {
   AlertDialog,
@@ -122,6 +122,11 @@ export default function SuperadminPage() {
     fetchGames();
   }
 
+  async function toggleSimulation(gameId: string, current: boolean) {
+    await supabase.from("games").update({ simulation_enabled: !current }).eq("id", gameId);
+    fetchGames();
+  }
+
   function handleLock() {
     sessionStorage.removeItem("superadmin_verified");
     setAuthenticated(false);
@@ -231,8 +236,23 @@ export default function SuperadminPage() {
                         Players: {game.playerCount} / {game.max_players}
                       </span>
                       <span>Squares: {game.squaresPicked} / 100</span>
+                      {game.simulation_enabled && (
+                        <span className="text-amber-400 font-medium">Sim enabled</span>
+                      )}
                     </div>
                   </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                  {/* Simulation toggle */}
+                  <Button
+                    variant={game.simulation_enabled ? "default" : "ghost"}
+                    size="icon-sm"
+                    className={game.simulation_enabled ? "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30" : "text-muted-foreground hover:text-amber-400"}
+                    onClick={() => toggleSimulation(game.id, game.simulation_enabled)}
+                    title={game.simulation_enabled ? "Simulation enabled — click to disable" : "Enable simulation"}
+                  >
+                    <FlaskConical className="size-4" />
+                  </Button>
 
                   {/* Delete button */}
                   <AlertDialog>
@@ -268,6 +288,7 @@ export default function SuperadminPage() {
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
+                  </div>
                 </div>
               </div>
             );
