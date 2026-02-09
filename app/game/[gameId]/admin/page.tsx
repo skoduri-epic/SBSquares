@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import { GameProvider, useGameContext } from "~/components/GameProvider";
 import { supabase } from "~/lib/supabase";
 import { generateDraftOrder, generateDigitPermutation, calculateQuarterResult, pickRandomSquares, getPlayerInitials, calculatePrizes, getDraftConfig } from "~/lib/game-logic";
-import type { Quarter } from "~/lib/types";
+import type { Quarter, Square } from "~/lib/types";
 import { PLAYER_COLORS } from "~/lib/types";
 import { cn } from "~/lib/utils";
 import { ArrowLeft, Play, Pause, SkipForward, FlaskConical, Shuffle, Eye, EyeOff, Trophy, UserCheck, RotateCcw, Trash2, Pencil, Shield, ShieldCheck, Plus, X, Users, Copy, Check, Link2, Share2, Lock, DollarSign, Download, Image, Zap, ArrowRightLeft } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { setSession } from "~/hooks/use-game";
 import { useLiveScores } from "~/hooks/use-live-scores";
+import { toast } from "~/hooks/use-toast";
 import { SIMULATION_FIXTURE, type SimulationStep } from "~/lib/simulation-fixture";
 import { TeamCombobox } from "~/components/TeamCombobox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "~/components/ui/tooltip";
@@ -76,6 +77,11 @@ function AdminView({ gameId }: { gameId: string }) {
   const [reassignMode, setReassignMode] = useState(false);
   const [reassignSquare, setReassignSquare] = useState<{ row: number; col: number } | null>(null);
   const [reassignTarget, setReassignTarget] = useState<string>("");
+
+  // Draft pick queue: serializes pick-on-behalf operations to prevent race conditions
+  const pickQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const [pickingPlayerId, setPickingPlayerId] = useState<string | null>(null);
+  const [pickQueue, setPickQueue] = useState<string[]>([]);
 
   if (gameLoading) {
     return (
@@ -163,55 +169,125 @@ function AdminView({ gameId }: { gameId: string }) {
     }
   }
 
-  async function pickOnBehalf(playerId: string) {
+  // Core pick logic — must only be called from the serialized queue
+  async function pickOnBehalfCore(playerId: string) {
+    if (!batch) return;
+
+    // Re-fetch draft order from DB for fresh picks_remaining
+    const { data: freshDraft } = await supabase
+      .from("draft_order")
+      .select("*")
+      .eq("game_id", game!.id)
+      .eq("batch", batch)
+      .eq("player_id", playerId)
+      .single();
+    if (!freshDraft || freshDraft.picks_remaining <= 0) return;
+
+    // Clear any existing tentative picks for this player first
+    await supabase
+      .from("squares")
+      .update({ player_id: null, batch: null, is_tentative: false, picked_at: null })
+      .eq("game_id", game!.id)
+      .eq("player_id", playerId)
+      .eq("is_tentative", true);
+    await supabase
+      .from("draft_order")
+      .update({ tentative_started_at: null })
+      .eq("game_id", game!.id)
+      .eq("batch", batch)
+      .eq("player_id", playerId);
+
+    // Fetch fresh squares from DB to avoid stale React state
+    const { data: freshSquares } = await supabase
+      .from("squares")
+      .select("*")
+      .eq("game_id", game!.id);
+
+    if (!freshSquares) return;
+
+    // Build a fresh 10x10 grid from DB data
+    const freshGrid: Square[][] = Array.from({ length: 10 }, (_, r) =>
+      Array.from({ length: 10 }, (_, c) => ({
+        id: "", game_id: game!.id, row_pos: r, col_pos: c,
+        player_id: null, batch: null, picked_at: null, is_tentative: false,
+      }))
+    );
+    for (const sq of freshSquares) {
+      freshGrid[sq.row_pos][sq.col_pos] = sq;
+    }
+
+    const needed = freshDraft.picks_remaining;
+    const picks = pickRandomSquares(freshGrid, needed);
+
+    let successCount = 0;
+    for (const pick of picks) {
+      // Use .is("player_id", null) as optimistic lock — only claim unclaimed squares
+      const { data } = await supabase
+        .from("squares")
+        .update({
+          player_id: playerId,
+          batch,
+          picked_at: new Date().toISOString(),
+        })
+        .eq("game_id", game!.id)
+        .eq("row_pos", pick.row)
+        .eq("col_pos", pick.col)
+        .is("player_id", null)
+        .select();
+
+      if (data && data.length > 0) {
+        successCount++;
+      }
+    }
+
+    // Only decrement picks_remaining by actual successes
+    const newRemaining = needed - successCount;
+    await supabase
+      .from("draft_order")
+      .update({ picks_remaining: Math.max(0, newRemaining) })
+      .eq("game_id", game!.id)
+      .eq("batch", batch)
+      .eq("player_id", playerId);
+
+    // If some picks failed due to contention, retry for remaining
+    if (newRemaining > 0) {
+      // Recursive retry with fresh data — the queue serialization
+      // guarantees this won't overlap with other players' picks
+      await pickOnBehalfCore(playerId);
+    }
+  }
+
+  // Queued entry point — serializes all pick-on-behalf operations
+  function pickOnBehalf(playerId: string) {
     if (!batch) return;
     const draft = batchOrder.find((d) => d.player_id === playerId);
     if (!draft || draft.picks_remaining <= 0) return;
+    const playerName = playerMap.get(playerId)?.name ?? "Unknown";
+    const picksNeeded = draft.picks_remaining;
 
-    setLoading(`pick-${playerId}`);
-    try {
-      // Clear any existing tentative picks for this player first
-      await supabase
-        .from("squares")
-        .update({ player_id: null, batch: null, is_tentative: false, picked_at: null })
-        .eq("game_id", game!.id)
-        .eq("player_id", playerId)
-        .eq("is_tentative", true);
-      await supabase
-        .from("draft_order")
-        .update({ tentative_started_at: null })
-        .eq("game_id", game!.id)
-        .eq("batch", batch)
-        .eq("player_id", playerId);
+    // Add to visible queue
+    setPickQueue((q) => [...q, playerId]);
 
-      const picks = pickRandomSquares(squares, draft.picks_remaining);
-      for (const pick of picks) {
-        await supabase
-          .from("squares")
-          .update({
-            player_id: playerId,
-            batch,
-            picked_at: new Date().toISOString(),
-          })
-          .eq("game_id", game!.id)
-          .eq("row_pos", pick.row)
-          .eq("col_pos", pick.col)
-          .is("player_id", null);
+    // Chain onto the promise queue so operations run sequentially
+    pickQueueRef.current = pickQueueRef.current.then(async () => {
+      setPickingPlayerId(playerId);
+      setPickQueue((q) => {
+        const idx = q.indexOf(playerId);
+        return idx >= 0 ? [...q.slice(0, idx), ...q.slice(idx + 1)] : q;
+      });
+      setLoading(`pick-${playerId}`);
+      try {
+        await pickOnBehalfCore(playerId);
+        toast({ title: `Picked ${picksNeeded} squares for ${playerName}` });
+        reload();
+      } catch (err) {
+        console.error("Pick on behalf failed:", err);
+        toast({ title: `Failed to pick for ${playerName}`, variant: "destructive" });
+      } finally {
+        setPickingPlayerId(null);
+        setLoading("");
       }
-
-      await supabase
-        .from("draft_order")
-        .update({ picks_remaining: 0 })
-        .eq("game_id", game!.id)
-        .eq("batch", batch)
-        .eq("player_id", playerId);
-
-      reload();
-    } catch (err) {
-      console.error("Pick on behalf failed:", err);
-    } finally {
-      setLoading("");
-    }
+    });
   }
 
   async function revealDigits() {
@@ -1455,6 +1531,22 @@ function AdminView({ gameId }: { gameId: string }) {
         {(batch1Order.length > 0 || batch2Order.length > 0) && (
           <section className="bg-card border border-border rounded-lg p-4 space-y-4">
             <h2 className="text-xl tracking-wider">Draft Order</h2>
+            {/* Picking banner — shown while any pick operation is active or queued */}
+            {(pickingPlayerId || pickQueue.length > 0) && (
+              <div className="flex items-center gap-2 bg-accent/10 border border-accent/30 rounded-lg px-3 py-2">
+                <div className="animate-spin w-4 h-4 border-2 border-accent border-t-transparent rounded-full flex-shrink-0" />
+                <span className="text-sm text-accent">
+                  {pickingPlayerId
+                    ? `Picking for ${playerMap.get(pickingPlayerId)?.name ?? "..."}...`
+                    : "Starting next pick..."}
+                  {pickQueue.length > 0 && (
+                    <span className="text-muted-foreground ml-1">
+                      ({pickQueue.length} queued)
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
             <TooltipProvider>
               {batch1Order.length > 0 && (
                 <div className="space-y-2">
@@ -1466,28 +1558,33 @@ function AdminView({ gameId }: { gameId: string }) {
                       const isDone = d.picks_remaining === 0;
                       const isActiveBatch = game.status === "batch1";
                       const isCurrent = isActiveBatch && d.player_id === currentPicker?.player_id;
-                      const canPickFor = isActiveBatch && !isDone;
+                      const isPicking = pickingPlayerId === d.player_id;
+                      const isQueued = pickQueue.includes(d.player_id);
+                      const anyPickRunning = loading.startsWith("pick-");
+                      const canPickFor = isActiveBatch && !isDone && !isPicking && !isQueued && !anyPickRunning;
                       const hasTentative = d.tentative_started_at != null || squares.flat().some((sq) => sq.player_id === d.player_id && sq.is_tentative);
-                      const status = isDone ? "Done" : hasTentative ? "Selecting..." : isCurrent ? "Picking..." : "Waiting";
+                      const status = isDone ? "Done" : isPicking ? "Picking..." : isQueued ? "Queued" : hasTentative ? "Selecting..." : isCurrent ? "Next" : "Waiting";
 
                       return (
                         <Tooltip key={d.player_id}>
                           <TooltipTrigger asChild>
                             <button
                               onClick={canPickFor ? () => pickOnBehalf(d.player_id) : undefined}
-                              disabled={!canPickFor || loading === `pick-${d.player_id}`}
+                              disabled={!canPickFor}
                               className={cn(
                                 "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold transition-all flex-shrink-0",
                                 isDone && "opacity-60",
-                                isCurrent && !hasTentative && "ring-2 ring-accent animate-pulse",
-                                hasTentative && "ring-2 ring-yellow-400 animate-pulse",
-                                !isDone && !isCurrent && !hasTentative && "opacity-30",
+                                isPicking && "ring-2 ring-accent animate-pulse",
+                                isQueued && "ring-2 ring-blue-400 opacity-70",
+                                hasTentative && !isPicking && !isQueued && "ring-2 ring-yellow-400 animate-pulse",
+                                isCurrent && !hasTentative && !isPicking && !isQueued && "ring-2 ring-accent",
+                                !isDone && !isCurrent && !hasTentative && !isPicking && !isQueued && "opacity-30",
                                 canPickFor && "cursor-pointer hover:opacity-100 hover:scale-110",
                                 !canPickFor && "cursor-default",
                               )}
                               style={{ backgroundColor: p.color, color: "#fff" }}
                             >
-                              {loading === `pick-${d.player_id}` ? "..." : getPlayerInitials(p.name)}
+                              {isPicking ? "..." : isQueued ? "\u23F3" : getPlayerInitials(p.name)}
                             </button>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -1511,28 +1608,33 @@ function AdminView({ gameId }: { gameId: string }) {
                       const isDone = d.picks_remaining === 0;
                       const isActiveBatch = game.status === "batch2";
                       const isCurrent = isActiveBatch && d.player_id === currentPicker?.player_id;
-                      const canPickFor = isActiveBatch && !isDone;
+                      const isPicking = pickingPlayerId === d.player_id;
+                      const isQueued = pickQueue.includes(d.player_id);
+                      const anyPickRunning = loading.startsWith("pick-");
+                      const canPickFor = isActiveBatch && !isDone && !isPicking && !isQueued && !anyPickRunning;
                       const hasTentative = d.tentative_started_at != null || squares.flat().some((sq) => sq.player_id === d.player_id && sq.is_tentative);
-                      const status = isDone ? "Done" : hasTentative ? "Selecting..." : isCurrent ? "Picking..." : "Waiting";
+                      const status = isDone ? "Done" : isPicking ? "Picking..." : isQueued ? "Queued" : hasTentative ? "Selecting..." : isCurrent ? "Next" : "Waiting";
 
                       return (
                         <Tooltip key={d.player_id}>
                           <TooltipTrigger asChild>
                             <button
                               onClick={canPickFor ? () => pickOnBehalf(d.player_id) : undefined}
-                              disabled={!canPickFor || loading === `pick-${d.player_id}`}
+                              disabled={!canPickFor}
                               className={cn(
                                 "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold transition-all flex-shrink-0",
                                 isDone && "opacity-60",
-                                isCurrent && !hasTentative && "ring-2 ring-accent animate-pulse",
-                                hasTentative && "ring-2 ring-yellow-400 animate-pulse",
-                                !isDone && !isCurrent && !hasTentative && "opacity-30",
+                                isPicking && "ring-2 ring-accent animate-pulse",
+                                isQueued && "ring-2 ring-blue-400 opacity-70",
+                                hasTentative && !isPicking && !isQueued && "ring-2 ring-yellow-400 animate-pulse",
+                                isCurrent && !hasTentative && !isPicking && !isQueued && "ring-2 ring-accent",
+                                !isDone && !isCurrent && !hasTentative && !isPicking && !isQueued && "opacity-30",
                                 canPickFor && "cursor-pointer hover:opacity-100 hover:scale-110",
                                 !canPickFor && "cursor-default",
                               )}
                               style={{ backgroundColor: p.color, color: "#fff" }}
                             >
-                              {loading === `pick-${d.player_id}` ? "..." : getPlayerInitials(p.name)}
+                              {isPicking ? "..." : isQueued ? "\u23F3" : getPlayerInitials(p.name)}
                             </button>
                           </TooltipTrigger>
                           <TooltipContent>
